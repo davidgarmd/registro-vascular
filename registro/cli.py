@@ -38,6 +38,10 @@ MAIL_FROM = "registro-vascular@hospital.es"
 
 RECORDATORIO_REPETIR_DIAS = 7  # volver a avisar cada N días mientras siga pendiente
 RECORDATORIO_MAX = 4           # número máximo de avisos por seguimiento
+RECORDATORIO_HORA = 8          # hora a partir de la cual servir.py envía los avisos del día
+
+# Poner a True si se accede a través de Tailscale Serve o Cloudflare Tunnel (HTTPS).
+DETRAS_DE_PROXY = False
 
 # Activar si la aplicación se sirve por HTTPS (recomendado fuera de pruebas).
 SESSION_COOKIE_SECURE = False

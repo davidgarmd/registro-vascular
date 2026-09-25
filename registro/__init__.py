@@ -21,6 +21,8 @@ def create_app(test_config=None):
         MAIL_FROM="registro-vascular@localhost",
         RECORDATORIO_REPETIR_DIAS=7,
         RECORDATORIO_MAX=4,
+        RECORDATORIO_HORA=8,
+        DETRAS_DE_PROXY=False,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
@@ -31,6 +33,10 @@ def create_app(test_config=None):
     else:
         app.config.update(test_config)
     os.makedirs(app.instance_path, exist_ok=True)
+    if app.config["DETRAS_DE_PROXY"]:
+        # Tailscale Serve o Cloudflare Tunnel entregan la petición por HTTPS a través de un proxy local.
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     @app.before_request
     def comprobar_configuracion():

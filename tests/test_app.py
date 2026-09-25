@@ -134,3 +134,14 @@ def test_todas_las_paginas_cargan(app, client, login):
         assert client.get(url).status_code == 200, url
     r = client.post("/admin/recordatorios", data={"csrf_token": t}, follow_redirects=True)
     assert r.status_code == 200
+
+
+def test_programador_envia_una_vez_al_dia(app):
+    from datetime import datetime
+    from registro.programador import comprobar
+    _procedimiento(app, dias_atras=40, cirujano_id=2)
+    hoy = date.today()
+    temprano = datetime(hoy.year, hoy.month, hoy.day, 7, 0)
+    assert comprobar(app, temprano) is None                     # antes de la hora
+    assert comprobar(app, temprano.replace(hour=11)) == {"uno@test.es": 1}
+    assert comprobar(app, temprano.replace(hour=15)) is None    # ya enviado hoy

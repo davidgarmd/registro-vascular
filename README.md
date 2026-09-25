@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 flask --app registro init          # crea instance/config.py (claves) y la base de datos
 flask --app registro demo          # OPCIONAL: 25 pacientes ficticios y 3 usuarios de prueba
-flask --app registro run           # abre http://localhost:5000
+flask --app registro run           # abre http://localhost:5000 (solo para probar)
 ```
 
 Usuarios de la demo: `admin@demo.local`, `cirujana1@demo.local`, `cirujano2@demo.local`.
@@ -77,6 +77,9 @@ MAIL_FROM = "registro-vascular@hospital.es"
 
 Programa el envío una vez al día:
 
+Si arrancas la aplicación con `python servir.py` (ver más abajo), no necesitas nada de esto:
+los recordatorios se envían solos. Solo si usas otro servidor:
+
 - **Linux (cron):** `0 8 * * * cd /ruta/registro-vascular && .venv/bin/flask --app registro enviar-recordatorios`
 - **Windows (Programador de tareas):** acción `C:\ruta\registro-vascular\.venv\Scripts\flask.exe`,
   argumentos `--app registro enviar-recordatorios`, iniciar en `C:\ruta\registro-vascular`.
@@ -99,13 +102,127 @@ datos. Si renombras una opción, los registros antiguos conservan el texto anter
 Después de cambiar algo, ejecuta las pruebas (`pip install -r requirements-dev.txt && pytest`):
 comprueban, entre otras cosas, que ninguna condición apunte a un campo o valor inexistente.
 
-## Dónde instalarlo
+## Instalarlo en tu ordenador con acceso remoto
 
-| Opción | Para qué |
-|---|---|
-| Tu ordenador (`flask run`) | Probar y enseñar el prototipo, con datos ficticios. |
-| PC o servidor del hospital, en la intranet | **Recomendada para datos reales.** Los datos no salen de la red del hospital. Pide a Informática una máquina, un nombre interno y el relay SMTP. En producción, usa un servidor WSGI (`pip install waitress` y `waitress-serve --port 8080 --call registro:create_app`) y HTTPS (`SESSION_COOKIE_SECURE = True`). |
-| Nube (VPS en la UE) | Solo con el visto bueno del DPD y un contrato de encargado del tratamiento. |
+La idea es que la aplicación y los datos vivan en tu ordenador y que los compañeros entren
+desde fuera por un canal cifrado, **sin abrir puertos en el router** y sin que la página
+quede visible para el resto de internet.
+
+### 1. Instalar y arrancar
+
+1. Instala Python 3.10 o superior desde [python.org](https://www.python.org/downloads/). En
+   Windows, marca «Add Python to PATH».
+2. Descarga este repositorio (botón *Code → Download ZIP* en GitHub, o `git clone`) y abre
+   una terminal en la carpeta `registro-vascular`.
+3. Ejecuta, una sola vez:
+
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate            # Mac/Linux: source .venv/bin/activate
+   pip install -r requirements.txt
+   flask --app registro init
+   flask --app registro crear-usuario --admin
+   ```
+
+4. Arranca el servidor con doble clic en `iniciar-registro.bat` (Windows) o
+   `iniciar-registro.command` (Mac), o con `python servir.py`. Queda disponible en
+   <http://localhost:8080>.
+
+`servir.py` usa un servidor apto para uso real (waitress) y **envía los recordatorios solo**:
+cada día, a partir de las 8:00 (`RECORDATORIO_HORA`), o en cuanto se encienda el ordenador si
+estaba apagado a esa hora. No hace falta cron ni el Programador de tareas.
+
+Para que arranque al encender el ordenador:
+- **Windows:** pulsa Win+R, escribe `shell:startup` y pon ahí un acceso directo a `iniciar-registro.bat`.
+- **Mac:** Ajustes del Sistema → General → Ítems de inicio → añade `iniciar-registro.command`.
+
+Configura también el ordenador para que **no se suspenda**: mientras está dormido, nadie
+puede acceder a la aplicación.
+
+### 2. Acceso remoto con Tailscale (recomendado)
+
+[Tailscale](https://tailscale.com) crea una red privada cifrada entre los dispositivos que tú
+autorices. La aplicación solo es accesible desde esos dispositivos; para el resto de internet
+no existe. Es gratis hasta 3 usuarios y 100 dispositivos (plan Personal); para más usuarios
+hay planes de pago.
+
+1. Instala Tailscale en tu ordenador e inicia sesión.
+2. Publica la aplicación con HTTPS dentro de tu red privada:
+
+   ```bash
+   tailscale serve --bg 8080
+   ```
+
+   Tailscale te dará una dirección del tipo `https://mi-ordenador.tu-red.ts.net`.
+3. En `instance/config.py`, pon esa dirección y activa el modo proxy:
+
+   ```python
+   BASE_URL = "https://mi-ordenador.tu-red.ts.net"
+   DETRAS_DE_PROXY = True
+   SESSION_COOKIE_SECURE = True
+   ```
+
+   Después, reinicia `servir.py`.
+4. Invita a cada cirujano a tu red de Tailscale (panel de administración → *Users → Invite*).
+   Cada uno instala Tailscale en su móvil u ordenador y entra en esa dirección con su usuario
+   del registro.
+
+**Pega:** cada compañero tiene que instalar Tailscale. Además, algunas redes de hospital
+bloquean las VPN; en ese caso, se conecta desde el móvil con datos o desde casa.
+
+### 3. Alternativa sin instalar nada en los dispositivos: Cloudflare Tunnel + Access
+
+Si prefieres que se entre desde cualquier navegador, [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+publica la aplicación en un dominio tuyo (por ejemplo, `registro.midominio.es`) sin abrir
+puertos. **Es imprescindible** protegerla con **Cloudflare Access**: una regla que solo deje
+pasar a los correos de tu lista, que reciben un código en el correo antes de ver siquiera la
+pantalla de acceso. Así hay dos barreras: el código de Cloudflare y la contraseña del registro.
+Necesitas un dominio propio (unos 10 € al año); el plan gratuito de Cloudflare cubre hasta 50 usuarios.
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create registro
+cloudflared tunnel route dns registro registro.midominio.es
+cloudflared tunnel run --url http://localhost:8080 registro
+```
+
+Después, en el panel de Cloudflare Zero Trust, crea una *Access application* para
+`registro.midominio.es` con una política *Allow* que liste los correos de los cirujanos. En
+`config.py`, pon `BASE_URL = "https://registro.midominio.es"`, `DETRAS_DE_PROXY = True` y
+`SESSION_COOKIE_SECURE = True`.
+
+> **No hagas** redirección de puertos en el router ni ejecutes `flask run --host 0.0.0.0`
+> para acceder desde fuera: la aplicación quedaría expuesta a internet sin cifrar.
+
+### 4. Correo de los recordatorios desde tu ordenador
+
+Fuera de la red del hospital no podrás usar su servidor de correo. Una opción sencilla es
+una cuenta de Gmail dedicada (por ejemplo, `registro.vascular.xxx@gmail.com`) con la
+verificación en dos pasos activada y una **contraseña de aplicación**:
+
+```python
+MAIL_SERVER = "smtp.gmail.com"
+MAIL_PORT = 587
+MAIL_USE_TLS = True
+MAIL_USERNAME = "registro.vascular.xxx@gmail.com"
+MAIL_PASSWORD = "contraseña de aplicación de 16 letras"
+MAIL_FROM = "registro.vascular.xxx@gmail.com"
+```
+
+Los correos solo contienen el código del paciente, el hito y el enlace; no llevan datos clínicos.
+
+### 5. Proteger el ordenador
+
+Los datos están en tu disco, así que:
+- **Cifra el disco:** BitLocker en Windows, FileVault en Mac.
+- Pon contraseña a tu sesión y bloqueo automático de pantalla.
+- **Haz copias de seguridad** cifradas de `instance/` (base de datos y `config.py`) en otro
+  soporte. Hazlas con el servidor parado, o copia el fichero con `sqlite3 registro.sqlite3 ".backup copia.sqlite3"`.
+- Mantén el sistema y Tailscale o `cloudflared` actualizados.
+
+Aun así, un ordenador personal con datos de pacientes es algo que **debe conocer y autorizar
+el DPD del hospital**. Si no lo autoriza, este mismo montaje funciona igual en un PC del
+servicio dentro del hospital.
 
 **Copias de seguridad:** guarda `instance/registro.sqlite3` **y** `instance/config.py`.
 Sin `config.py` (la clave `NHC_KEY`), los NHC guardados no pueden descifrarse.
@@ -139,6 +256,9 @@ registro/
   auth.py            acceso, usuarios y CSRF
   vistas.py          páginas y exportación
   cli.py             comandos: init, crear-usuario, enviar-recordatorios, demo
+  programador.py     envío diario automático de recordatorios
+servir.py            arranque para uso real (waitress + recordatorios)
+iniciar-registro.*   arranque con doble clic (Windows .bat, Mac .command)
   templates/, static/
 tests/               pruebas (pytest)
 ```
