@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block contenido %}
+<h1>Nueva intervención · {{ paciente.codigo }}</h1>
+<p class="tenue">Elige el tipo de procedimiento.</p>
+<div class="tipos">
+  {% for clave, p in PROCEDIMIENTOS.items() %}
+    <a class="tipo" href="{{ url_for('main.nuevo_procedimiento', paciente_id=paciente.id, tipo=clave) }}">
+      <strong>{{ p.nombre }}</strong><span>{{ p.descripcion }}</span>
+    </a>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block contenido %}
+<h1>Seguimientos pendientes</h1>
+<form class="filtros">
+  <label class="opcion"><input type="checkbox" name="mios" value="1" {% if mios %}checked{% endif %} onchange="this.form.submit()"><span>Solo los míos</span></label>
+  <label class="opcion"><input type="checkbox" name="vencidos" value="1" {% if solo_vencidos %}checked{% endif %} onchange="this.form.submit()"><span>Solo vencidos</span></label>
+  <input type="hidden" name="vencidos" value="0">
+</form>
+<table>
+  <thead><tr><th>Paciente</th><th>Intervención</th><th>Responsable</th><th>Hito</th><th>Previsto</th><th>Avisos</th><th></th></tr></thead>
+  <tbody>
+  {% for s in filas %}
+    <tr class="{% if s.fecha_prevista <= hoy %}vencida{% endif %}">
+      <td><a href="{{ url_for('main.paciente', paciente_id=s.paciente_id) }}">{{ s.codigo }}</a></td>
+      <td>{{ PROCEDIMIENTOS[s.tipo].nombre }} · {{ s.fecha_cirugia }}</td>
+      <td>{{ s.cirujano }}</td>
+      <td>{{ ETIQUETA_HITO[s.hito] }}</td>
+      <td>{{ s.fecha_prevista }}</td>
+      <td>{{ s.recordatorios_enviados }}</td>
+      <td><a class="boton pequeno" href="{{ url_for('main.seguimiento', seguimiento_id=s.id) }}">Registrar</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="tenue">No hay seguimientos pendientes con estos filtros.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

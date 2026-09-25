@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% from '_campos.html' import formulario with context %}
+{% block contenido %}
+<h1>{{ 'Editar' if editar else 'Nueva' }} intervención · {{ PROCEDIMIENTOS[tipo].nombre }}</h1>
+<p class="tenue">Paciente {{ paciente.codigo }}. Los campos con <span class="req">*</span> son obligatorios; el resto aparece u oculta según lo que elijas.</p>
+<form method="post" class="formulario" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="seccion">
+    <h2>Intervención</h2>
+    <div class="rejilla">
+      <div class="campo{% if errores.fecha_cirugia %} con-error{% endif %}">
+        <label for="fecha_cirugia">Fecha de la cirugía <span class="req">*</span></label>
+        <input id="fecha_cirugia" type="date" name="fecha_cirugia" value="{{ fecha }}" max="{{ hoy }}" required>
+        {% if errores.fecha_cirugia %}<small class="error">{{ errores.fecha_cirugia }}</small>{% endif %}
+      </div>
+      <div class="campo{% if errores.cirujano_id %} con-error{% endif %}">
+        <label for="cirujano_id">Cirujano responsable (recibe los recordatorios) <span class="req">*</span></label>
+        <select id="cirujano_id" name="cirujano_id">
+          {% for u in cirujanos %}<option value="{{ u.id }}" {% if u.id == cirujano_id %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
+        </select>
+        {% if errores.cirujano_id %}<small class="error">{{ errores.cirujano_id }}</small>{% endif %}
+      </div>
+    </div>
+  </section>
+  {{ formulario(secciones, datos, errores) }}
+  <div class="acciones">
+    <button class="boton">Guardar</button>
+    <a class="boton secundario" href="{{ url_for('main.procedimiento', procedimiento_id=proc.id) if editar else url_for('main.paciente', paciente_id=paciente.id) }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

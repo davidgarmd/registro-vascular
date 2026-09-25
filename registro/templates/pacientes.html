@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block contenido %}
+<h1>Pacientes</h1>
+<table>
+  <thead><tr><th>Código</th><th>Sexo</th><th>Intervenciones</th><th>Última cirugía</th></tr></thead>
+  <tbody>
+  {% for p in pacientes %}
+    <tr><td><a href="{{ url_for('main.paciente', paciente_id=p.id) }}">{{ p.codigo }}</a></td><td>{{ p.sexo or '' }}</td><td>{{ p.n_proc }}</td><td>{{ p.ultima or '' }}</td></tr>
+  {% else %}
+    <tr><td colspan="4" class="tenue">No hay pacientes.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

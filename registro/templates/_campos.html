@@ -1,0 +1,78 @@
+{% macro campo(c, datos, errores) %}
+{%- set valor = datos.get(c.nombre) -%}
+{%- set error = errores.get(c.nombre) -%}
+<div class="campo campo-{{ c.tipo }}{% if error %} con-error{% endif %}"
+     {% if c.si %}data-si='{{ c.si | tojson }}'{% endif %} data-nombre="{{ c.nombre }}">
+  {% if c.tipo in ('radio', 'multi', 'sino') %}
+    <fieldset>
+      <legend>{{ c.etiqueta }}{% if c.req %} <span class="req">*</span>{% endif %}</legend>
+      <div class="opciones">
+      {% for op in c.opciones %}
+        <label class="opcion">
+          <input type="{{ 'checkbox' if c.tipo == 'multi' else 'radio' }}" name="{{ c.nombre }}" value="{{ op }}"
+                 {% if (c.tipo == 'multi' and valor and op in valor) or (c.tipo != 'multi' and valor == op) %}checked{% endif %}>
+          <span>{{ op }}</span>
+        </label>
+      {% endfor %}
+      </div>
+    </fieldset>
+  {% else %}
+    <label for="f-{{ c.nombre }}">{{ c.etiqueta }}{% if c.req %} <span class="req">*</span>{% endif %}</label>
+    {% if c.tipo == 'select' %}
+      <select id="f-{{ c.nombre }}" name="{{ c.nombre }}">
+        <option value="">—</option>
+        {% for op in c.opciones %}<option {% if valor == op %}selected{% endif %}>{{ op }}</option>{% endfor %}
+      </select>
+    {% elif c.tipo == 'area' %}
+      <textarea id="f-{{ c.nombre }}" name="{{ c.nombre }}" rows="3">{{ valor or '' }}</textarea>
+    {% elif c.tipo == 'numero' %}
+      <div class="con-unidad">
+        <input id="f-{{ c.nombre }}" name="{{ c.nombre }}" inputmode="decimal" value="{{ valor if valor is not none else '' }}"
+               {% if c.min is defined %}data-min="{{ c.min }}"{% endif %} {% if c.max is defined %}data-max="{{ c.max }}"{% endif %}>
+        {% if c.unidad %}<span class="unidad">{{ c.unidad }}</span>{% endif %}
+      </div>
+    {% elif c.tipo == 'fecha' %}
+      <input id="f-{{ c.nombre }}" type="date" name="{{ c.nombre }}" value="{{ valor or '' }}" max="{{ hoy }}">
+    {% else %}
+      <input id="f-{{ c.nombre }}" name="{{ c.nombre }}" value="{{ valor or '' }}">
+    {% endif %}
+  {% endif %}
+  {% if c.ayuda %}<small class="ayuda">{{ c.ayuda }}</small>{% endif %}
+  {% if error %}<small class="error">{{ error }}</small>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro formulario(secciones, datos, errores) %}
+{% for s in secciones %}
+  <section class="seccion">
+    <h2>{{ s.titulo }}</h2>
+    <div class="rejilla">
+      {% for c in s.campos %}{{ campo(c, datos, errores) }}{% endfor %}
+    </div>
+  </section>
+{% endfor %}
+{% endmacro %}
+
+{% macro resumen(secciones, datos) %}
+{% for s in secciones %}
+  {% set visibles = s.campos | selectattr('nombre', 'in', datos) | list %}
+  {% if visibles %}
+  <section class="seccion">
+    <h2>{{ s.titulo }}</h2>
+    <dl class="resumen">
+      {% for c in visibles %}
+        <dt>{{ c.etiqueta }}</dt>
+        <dd>{{ valor_legible(datos[c.nombre]) }}{% if c.unidad %} {{ c.unidad }}{% endif %}</dd>
+      {% endfor %}
+    </dl>
+  </section>
+  {% endif %}
+{% endfor %}
+{% endmacro %}
+
+{% macro estado_seguimiento(s) %}
+  {%- if s.estado == 'completado' -%}<span class="chip chip-ok">Hecho</span>
+  {%- elif s.estado == 'no_realizable' -%}<span class="chip chip-gris">No realizable</span>
+  {%- elif s.fecha_prevista <= hoy -%}<span class="chip chip-alerta">Vencido</span>
+  {%- else -%}<span class="chip">Programado</span>{%- endif -%}
+{% endmacro %}

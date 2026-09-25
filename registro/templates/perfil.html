@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block contenido %}
+<div class="tarjeta estrecha">
+  <h1>Cambiar contraseña</h1>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="campo"><label for="actual">Contraseña actual</label><input id="actual" name="actual" type="password" required></div>
+    <div class="campo"><label for="nueva">Nueva contraseña</label><input id="nueva" name="nueva" type="password" required minlength="10"></div>
+    <div class="campo"><label for="repetir">Repite la nueva contraseña</label><input id="repetir" name="repetir" type="password" required></div>
+    <button class="boton">Guardar</button>
+  </form>
+</div>
+{% endblock %}

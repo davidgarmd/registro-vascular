@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% from '_campos.html' import resumen, estado_seguimiento with context %}
+{% block contenido %}
+<div class="cabecera">
+  <div>
+    <h1>{{ PROCEDIMIENTOS[proc.tipo].nombre }} · {{ proc.fecha_cirugia }}</h1>
+    <p class="tenue">Paciente <a href="{{ url_for('main.paciente', paciente_id=proc.paciente_id) }}">{{ proc.codigo }}</a> · Responsable: {{ proc.cirujano }}</p>
+  </div>
+  <a class="boton secundario" href="{{ url_for('main.editar_procedimiento', procedimiento_id=proc.id) }}">Editar</a>
+</div>
+<section class="seccion">
+  <h2>Seguimientos</h2>
+  <div class="hitos">
+    {% for s in seguimientos %}
+      <a class="hito" href="{{ url_for('main.seguimiento', seguimiento_id=s.id) }}">
+        <span>{{ ETIQUETA_HITO[s.hito] }}</span><small>{{ s.fecha_prevista }}</small>{{ estado_seguimiento(s) }}
+      </a>
+    {% endfor %}
+  </div>
+</section>
+{{ resumen(secciones, datos) }}
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% from '_campos.html' import estado_seguimiento with context %}
+{% block contenido %}
+<h1>Hola, {{ g.usuario.nombre }}</h1>
+<div class="cifras">
+  <div class="cifra"><strong>{{ totales.pacientes }}</strong><span>pacientes</span></div>
+  <div class="cifra"><strong>{{ totales.procedimientos }}</strong><span>intervenciones</span></div>
+  <div class="cifra {% if totales.vencidos %}cifra-alerta{% endif %}"><strong>{{ totales.vencidos }}</strong><span>seguimientos vencidos (servicio)</span></div>
+</div>
+
+<section class="seccion">
+  <h2>Mis seguimientos vencidos</h2>
+  {% if vencidos %}
+  <table>
+    <thead><tr><th>Paciente</th><th>Intervención</th><th>Hito</th><th>Previsto</th><th></th></tr></thead>
+    <tbody>
+    {% for s in vencidos %}
+      <tr>
+        <td><a href="{{ url_for('main.paciente', paciente_id=s.paciente_id) }}">{{ s.codigo }}</a></td>
+        <td>{{ PROCEDIMIENTOS[s.tipo].nombre }} · {{ s.fecha_cirugia }}</td>
+        <td>{{ ETIQUETA_HITO[s.hito] }}</td>
+        <td>{{ s.fecha_prevista }}</td>
+        <td><a class="boton pequeno" href="{{ url_for('main.seguimiento', seguimiento_id=s.id) }}">Registrar</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="tenue">No tienes seguimientos vencidos. </p>{% endif %}
+</section>
+
+<section class="seccion">
+  <h2>Mis seguimientos en los próximos 30 días</h2>
+  {% if proximos %}
+  <ul class="lista">
+    {% for s in proximos %}
+      <li><a href="{{ url_for('main.seguimiento', seguimiento_id=s.id) }}">{{ s.codigo }}</a> · {{ PROCEDIMIENTOS[s.tipo].nombre }} · {{ ETIQUETA_HITO[s.hito] }} el {{ s.fecha_prevista }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="tenue">Nada previsto.</p>{% endif %}
+</section>
+
+<section class="seccion">
+  <h2>Últimas intervenciones registradas</h2>
+  {% if recientes %}
+  <ul class="lista">
+    {% for p in recientes %}
+      <li><a href="{{ url_for('main.procedimiento', procedimiento_id=p.id) }}">{{ p.codigo }}</a> · {{ PROCEDIMIENTOS[p.tipo].nombre }} · {{ p.fecha_cirugia }} · {{ p.cirujano }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="tenue">Todavía no hay intervenciones. Empieza con <a href="{{ url_for('main.nuevo_paciente') }}">+ Paciente</a>.</p>{% endif %}
+</section>
+
+{% if g.usuario.es_admin %}
+<form method="post" action="{{ url_for('main.recordatorios_ahora') }}" class="seccion">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="boton secundario">Enviar recordatorios ahora</button>
+  <small class="tenue">Normalmente se envían solos una vez al día.</small>
+</form>
+{% endif %}
+{% endblock %}

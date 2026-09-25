@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block contenido %}
+<div class="tarjeta estrecha">
+  <h1>Nuevo paciente</h1>
+  <p class="tenue">El NHC se guarda cifrado y solo se ve dentro de la aplicación. En correos y exportaciones el paciente aparece con su código (p. ej. RV-00012). No introduzcas nombre ni DNI.</p>
+  <form method="post" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="campo"><label for="nhc">Número de historia clínica</label><input id="nhc" name="nhc" required value="{{ request.form.nhc or '' }}"></div>
+    <div class="campo"><label for="nhc2">Repite el NHC</label><input id="nhc2" name="nhc2" required></div>
+    <div class="campo"><fieldset><legend>Sexo <span class="req">*</span></legend>
+      <div class="opciones">{% for s in sexos %}<label class="opcion"><input type="radio" name="sexo" value="{{ s }}" required {% if request.form.sexo == s %}checked{% endif %}><span>{{ s }}</span></label>{% endfor %}</div>
+    </fieldset></div>
+    <button class="boton">Continuar</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block contenido %}
+<h1>Exportar datos</h1>
+<p class="tenue">Ficheros CSV (separados por punto y coma, se abren en Excel). Incluyen el código del paciente, nunca el NHC. Cada descarga queda registrada.</p>
+<table>
+  <thead><tr><th>Procedimiento</th><th>Cirugías</th><th>Seguimientos</th></tr></thead>
+  <tbody>
+  {% for clave, p in PROCEDIMIENTOS.items() %}
+    <tr>
+      <td>{{ p.nombre }}</td>
+      <td><a href="{{ url_for('main.exportar_csv', tipo=clave, que='procedimientos') }}">Descargar</a></td>
+      <td><a href="{{ url_for('main.exportar_csv', tipo=clave, que='seguimientos') }}">Descargar</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% from '_campos.html' import formulario, estado_seguimiento with context %}
+{% block contenido %}
+<h1>Seguimiento a {{ ETIQUETA_HITO[seg.hito] }} · {{ seg.codigo }}</h1>
+<p class="tenue">{{ PROCEDIMIENTOS[seg.tipo].nombre }} del {{ seg.fecha_cirugia }} · previsto el {{ seg.fecha_prevista }} · {{ estado_seguimiento(seg) }}
+  · <a href="{{ url_for('main.procedimiento', procedimiento_id=seg.procedimiento_id) }}">ver intervención</a></p>
+
+{% if seg.estado == 'no_realizable' %}
+  <div class="aviso aviso-aviso">Marcado como no realizable: {{ seg.motivo_no_realizable }}</div>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="boton secundario" name="accion" value="reabrir">Reabrir seguimiento</button>
+  </form>
+{% else %}
+<form method="post" class="formulario" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {{ formulario(secciones, datos, errores) }}
+  <div class="acciones">
+    <button class="boton" name="accion" value="guardar">Guardar seguimiento</button>
+  </div>
+</form>
+{% if seg.estado == 'pendiente' %}
+<details class="seccion">
+  <summary>No se puede realizar este seguimiento (paciente perdido, trasladado…)</summary>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="campo"><label for="motivo">Motivo</label><input id="motivo" name="motivo" required></div>
+    <button class="boton secundario" name="accion" value="no_realizable">Marcar como no realizable</button>
+  </form>
+</details>
+{% endif %}
+{% endif %}
+{% endblock %}

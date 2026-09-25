@@ -1,0 +1,11 @@
+# Datos y claves: NUNCA al repositorio
+instance/
+*.sqlite3
+*.db
+*.eml
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
