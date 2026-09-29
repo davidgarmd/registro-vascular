@@ -1,0 +1,17 @@
+# Caddy obtiene y renueva solo el certificado HTTPS (Let's Encrypt) para tu dominio.
+{
+	email {$EMAIL_ADMIN}
+}
+
+{$DOMINIO} {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+	reverse_proxy app:8080
+}

@@ -11,6 +11,11 @@ bp = Blueprint("auth", __name__)
 
 LONGITUD_MINIMA = 10
 
+# Protección frente a ataques de fuerza bruta en la pantalla de acceso.
+VENTANA_BLOQUEO = "-15 minutes"
+MAX_FALLOS_CORREO = 5    # intentos fallidos por cuenta
+MAX_FALLOS_IP = 20       # intentos fallidos desde una misma dirección IP
+
 
 def login_requerido(vista):
     @functools.wraps(vista)
@@ -64,10 +69,23 @@ def crear_usuario(nombre, email, password, es_admin=False):
     return cur.lastrowid
 
 
+def acceso_bloqueado(email, ip):
+    fila = get_db().execute(
+        """SELECT SUM(detalle = ?), SUM(entidad = ?) FROM auditoria
+           WHERE accion = 'login_fallido' AND fecha >= datetime('now', ?)""",
+        (email, ip, VENTANA_BLOQUEO),
+    ).fetchone()
+    return (fila[0] or 0) >= MAX_FALLOS_CORREO or (fila[1] or 0) >= MAX_FALLOS_IP
+
+
 @bp.route("/login", methods=("GET", "POST"))
 def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
+        ip = request.remote_addr or "desconocida"
+        if acceso_bloqueado(email, ip):
+            flash("Demasiados intentos fallidos. Espera 15 minutos y vuelve a intentarlo.", "error")
+            return render_template("login.html"), 429
         usuario = get_db().execute(
             "SELECT * FROM usuarios WHERE email = ? AND activo = 1", (email,)
         ).fetchone()
@@ -81,7 +99,7 @@ def login():
             if not destino.startswith("/") or destino.startswith("//"):
                 destino = url_for("main.inicio")
             return redirect(destino)
-        auditar("login_fallido", detalle=email, usuario_id=None)
+        auditar("login_fallido", entidad=ip, detalle=email, usuario_id=None)
         get_db().commit()
         flash("Correo o contraseña incorrectos.", "error")
     return render_template("login.html")

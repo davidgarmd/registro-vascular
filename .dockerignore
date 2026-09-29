@@ -1,0 +1,10 @@
+instance
+datos
+copias
+.env
+.venv
+venv
+tests
+__pycache__
+*.pyc
+.pytest_cache

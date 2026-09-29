@@ -31,7 +31,8 @@ y **recordatorios por correo** a cada cirujano a 1, 3, 6 y 12 meses de la cirug�
   no puede hacerse, se marca como «no realizable» y deja de avisar.
 - **Exportación a CSV** por procedimiento (cirugías y seguimientos), lista para Excel, SPSS o R.
 - **Usuarios con contraseña**, roles de cirujano y administrador, protección CSRF y un
-  **registro de auditoría** (accesos, altas, ediciones, exportaciones).
+  **registro de auditoría** (accesos, altas, ediciones, exportaciones). Bloqueo temporal
+  tras varios intentos de acceso fallidos.
 
 ## Probarlo en 5 minutos
 
@@ -101,6 +102,11 @@ Los datos se guardan como JSON, así que añadir o quitar campos no requiere toc
 datos. Si renombras una opción, los registros antiguos conservan el texto anterior.
 Después de cambiar algo, ejecuta las pruebas (`pip install -r requirements-dev.txt && pytest`):
 comprueban, entre otras cosas, que ninguna condición apunte a un campo o valor inexistente.
+
+## Publicarlo en internet
+
+Paso a paso, con un servidor en la UE, dominio propio, HTTPS y copias automáticas:
+**[GUIA-PUBLICAR-ONLINE.md](GUIA-PUBLICAR-ONLINE.md)**.
 
 ## Instalarlo en tu ordenador con acceso remoto
 
@@ -240,7 +246,6 @@ el RGPD. Antes de usarlo con pacientes reales:
 ## Limitaciones del prototipo
 
 - No hay recuperación de contraseña por correo: la restablece un administrador.
-- No hay bloqueo tras intentos de acceso fallidos (los intentos quedan en la auditoría).
 - SQLite basta para un servicio (miles de registros y varios usuarios a la vez). Para un
   registro multicéntrico, convendría migrar a PostgreSQL.
 - Cualquier usuario puede ver y editar los registros del servicio; queda constancia en la auditoría.
@@ -259,6 +264,8 @@ registro/
   programador.py     envío diario automático de recordatorios
 servir.py            arranque para uso real (waitress + recordatorios)
 iniciar-registro.*   arranque con doble clic (Windows .bat, Mac .command)
+Dockerfile, docker-compose.yml, Caddyfile, instalar-servidor.sh, copia-seguridad.sh
+                     publicación en un servidor (ver GUIA-PUBLICAR-ONLINE.md)
   templates/, static/
 tests/               pruebas (pytest)
 ```

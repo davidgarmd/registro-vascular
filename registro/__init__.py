@@ -10,6 +10,7 @@ def create_app(test_config=None):
     app.config.from_mapping(
         DATABASE=os.path.join(app.instance_path, "registro.sqlite3"),
         OUTBOX=os.path.join(app.instance_path, "outbox"),
+        MARCA_RECORDATORIOS=os.path.join(app.instance_path, "ultimo_envio_recordatorios.txt"),
         PREFIJO_CODIGO="RV",
         BASE_URL="http://localhost:5000",
         MAIL_SERVER=None,

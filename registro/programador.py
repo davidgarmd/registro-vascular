@@ -18,7 +18,7 @@ INTERVALO_SEGUNDOS = 600
 def comprobar(app, ahora=None):
     """Envía los recordatorios si toca. Devuelve el resumen o None si no tocaba."""
     ahora = ahora or datetime.now()
-    marca = Path(app.instance_path) / "ultimo_envio_recordatorios.txt"
+    marca = Path(app.config["MARCA_RECORDATORIOS"])
     hoy = ahora.date().isoformat()
     if ahora.hour < app.config["RECORDATORIO_HORA"]:
         return None

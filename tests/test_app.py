@@ -145,3 +145,16 @@ def test_programador_envia_una_vez_al_dia(app):
     assert comprobar(app, temprano) is None                     # antes de la hora
     assert comprobar(app, temprano.replace(hour=11)) == {"uno@test.es": 1}
     assert comprobar(app, temprano.replace(hour=15)) is None    # ya enviado hoy
+
+
+def test_bloqueo_tras_intentos_fallidos(client):
+    from tests.conftest import token
+    for _ in range(5):
+        r = client.post("/login", data={"email": "uno@test.es", "password": "mala", "csrf_token": token(client)})
+        assert r.status_code == 200
+    # Ni siquiera la contraseña correcta entra durante el bloqueo.
+    r = client.post("/login", data={"email": "uno@test.es", "password": "contraseña-uno", "csrf_token": token(client)})
+    assert r.status_code == 429
+    # Otra cuenta sigue pudiendo entrar.
+    r = client.post("/login", data={"email": "admin@test.es", "password": "contraseña-admin", "csrf_token": token(client)})
+    assert r.status_code == 302

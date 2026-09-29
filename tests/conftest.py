@@ -17,6 +17,7 @@ def app(tmp_path):
         "HMAC_KEY": "clave-hmac-test",
         "DATABASE": str(tmp_path / "test.sqlite3"),
         "OUTBOX": str(tmp_path / "outbox"),
+        "MARCA_RECORDATORIOS": str(tmp_path / "marca.txt"),
         "BASE_URL": "https://registro.test",
     })
     with app.app_context():

@@ -1,0 +1,30 @@
+# Registro vascular en un servidor: la aplicación + Caddy (HTTPS automático).
+# Arranque: docker compose up -d --build   (lo hace instalar-servidor.sh)
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REGISTRO_DETRAS_DE_PROXY: "true"
+      REGISTRO_SESSION_COOKIE_SECURE: "true"
+    volumes:
+      - ./datos:/app/instance      # base de datos y claves: HAZ COPIA DE ESTA CARPETA
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:
