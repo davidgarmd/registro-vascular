@@ -131,3 +131,17 @@ button.tipo { font: inherit; text-align: left; cursor: pointer; }
   .disp-fila select { grid-column: 1 / -1; }
   .seccion.reintervencion { margin-left: calc(var(--nivel) * 10px); }
 }
+
+/* Actividad mensual */
+.filtros-actividad { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.filtros-actividad .campo { margin: 0; min-width: 160px; }
+.tabla-ancha { overflow-x: auto; }
+table.actividad { display: table; font-variant-numeric: tabular-nums; }
+table.actividad thead, table.actividad tbody { display: table-row-group; }
+table.actividad thead { display: table-header-group; }
+table.actividad td, table.actividad thead th { text-align: right; white-space: nowrap; }
+table.actividad th[scope=row] { text-align: left; font-weight: 600; color: var(--texto); font-size: 0.93rem; min-width: 220px; }
+table.actividad tr.nivel-1 th[scope=row] { font-weight: 400; padding-left: 28px; color: var(--tenue); }
+table.actividad tr.nivel-1 td { color: var(--tenue); }
+table.actividad td.total { font-weight: 700; }
+table.actividad tr.pie th, table.actividad tr.pie td { border-top: 2px solid var(--borde); font-weight: 700; }

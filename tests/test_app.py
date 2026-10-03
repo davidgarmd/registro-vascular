@@ -282,3 +282,43 @@ def test_migracion_de_base_antigua(tmp_path):
         init_db()  # idempotente
     fila = sqlite3.connect(ruta).execute("SELECT procedimiento_origen_id, con_seguimiento FROM procedimientos").fetchone()
     assert fila == (None, 1)
+
+
+def test_clasificacion_por_patologia():
+    from registro.actividad import clasificar, CRONICA, CLAUDICANTE, NO_CLAUDICANTE, PIE_DIABETICO, AGUDA, AAA
+    from registro.formularios import PIE_DIABETICO_SIN_ISQUEMIA
+    assert clasificar("bypass", {"indicacion": "Claudicación intermitente"}) == (CRONICA, CLAUDICANTE)
+    assert clasificar("endo_periferico", {"indicacion": "Isquemia crónica: lesión trófica"}) == (CRONICA, NO_CLAUDICANTE)
+    assert clasificar("bypass", {"indicacion": "Isquemia aguda"})[0] == AGUDA
+    assert clasificar("amputacion", {"indicacion": "Isquemia crónica (CLTI)"}) == (CRONICA, NO_CLAUDICANTE)
+    assert clasificar("amputacion", {"indicacion": PIE_DIABETICO_SIN_ISQUEMIA, "nivel": "Digital"}) == (PIE_DIABETICO, "Digital")
+    assert clasificar("evar", {"indicacion": "Aneurisma de aorta abdominal", "variante": "EVAR estándar"})[0] == AAA
+
+
+def test_actividad_mensual(app, client, login):
+    t = login()
+    with app.app_context():
+        pac = modelos.crear_paciente("1", "Mujer", 1)
+        a = modelos.crear_procedimiento(pac, "bypass", "2026-01-10", 1, {"indicacion": "Claudicación intermitente"}, 1)
+        modelos.crear_procedimiento(pac, "endo_periferico", "2026-01-20", 1,
+                                    {"indicacion": "Isquemia crónica: dolor en reposo"}, 1, origen_id=a)
+        modelos.crear_procedimiento(pac, "amputacion", "2026-03-05", 2,
+                                    {"indicacion": "Isquemia crónica (CLTI)", "nivel": "Infracondílea"}, 1)
+        modelos.crear_procedimiento(pac, "varices", "2025-12-01", 1, {}, 1)   # fuera del periodo
+    html = client.get("/actividad?desde=2026-01&hasta=2026-03").get_data(as_text=True)
+    assert "Isquemia crónica de miembros inferiores" in html and "Claudicante" in html
+    assert "Varices" not in html.split("Por tipo de procedimiento")[0]
+    resumen = client.get("/actividad/resumen.csv?desde=2026-01&hasta=2026-03").get_data(as_text=True)
+    lineas = resumen.splitlines()
+    assert lineas[0].lstrip("\ufeff") == "Patología;Subgrupo;2026-01;2026-02;2026-03;Total"
+    assert "Isquemia crónica de miembros inferiores;;2;0;1;3" in lineas
+    assert "Isquemia crónica de miembros inferiores;Claudicante;1;0;0;1" in lineas
+    assert "De ellas, reintervenciones;;1;0;0;1" in lineas
+    assert "Amputaciones;;0;0;1;1" in lineas
+    detalle = client.get("/actividad/detalle.csv?desde=2026-01&hasta=2026-03&cirujano=2").get_data(as_text=True)
+    assert len(detalle.splitlines()) == 2 and "Amputaciones" in detalle
+    # Los cirujanos ven el resumen, pero solo los administradores descargan.
+    client.post("/logout", data={"csrf_token": t})
+    login("uno@test.es", "contraseña-uno")
+    assert client.get("/actividad").status_code == 200
+    assert client.get("/actividad/detalle.csv").status_code == 403

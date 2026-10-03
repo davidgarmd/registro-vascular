@@ -159,6 +159,7 @@ TECNICAS_ENDO_PERIFERICAS = [
     "Stent metálico desnudo", "Stent farmacoactivo", "Stent cubierto", "Aterectomía",
     "Litotricia intravascular", "Trombectomía/aspiración", "Fibrinólisis",
 ]
+PIE_DIABETICO_SIN_ISQUEMIA = "Pie diabético sin isquemia (infeccioso/neuropático)"
 AMPUTACION_SEGUIMIENTO = C(
     "amputacion", "Amputación desde la última revisión", "radio",
     ["No", "Digital", "Transmetatarsiana", "Infracondílea", "Supracondílea"])
@@ -418,6 +419,7 @@ procedimiento(
             C("rutherford_agudo", "Clasificación de isquemia aguda", "select", ["I", "IIa", "IIb", "III"],
               si=si("indicacion", "Isquemia aguda")),
             C("glass", "GLASS", "select", ["I", "II", "III"]),
+            C("pie_diabetico", "Pie diabético", "sino"),
             C("redo", "Revascularización previa en esta extremidad", "sino"),
         ),
         S(
@@ -476,6 +478,7 @@ procedimiento(
             C("tasc", "TASC II", "select", ["A", "B", "C", "D"]),
             C("glass", "GLASS", "select", ["I", "II", "III"]),
             C("calcificacion", "Calcificación (PACSS)", "select", ["0", "1", "2", "3", "4"]),
+            C("pie_diabetico", "Pie diabético", "sino"),
         ),
         S(
             "Técnica",
@@ -796,6 +799,54 @@ procedimiento(
        C("satisfaccion", "Satisfacción del paciente (0-10)", "numero", min=0, max=10))],
 )
 
+# Síndrome postrombótico ------------------------------------------------------
+procedimiento(
+    "sindrome_postrombotico", "Síndrome postrombótico",
+    "Recanalización venosa profunda (venoplastia y stent) en la obstrucción venosa postrombótica.",
+    [
+        S(
+            "Clínica",
+            C("lado", "Lado", "radio", LADO, req=True),
+            C("ceap_c", "CEAP - Clínica (C)", "select",
+              ["C0", "C1", "C2", "C3", "C4a", "C4b", "C4c", "C5", "C6"], req=True),
+            C("villalta", "Escala de Villalta", "numero", min=0, max=33),
+            C("vcss", "VCSS", "numero", min=0, max=30),
+            C("meses_desde_tvp", "Tiempo desde la TVP", "numero", min=0, max=600, unidad="meses"),
+            C("segmentos", "Segmentos afectados", "multi", [
+                "Vena cava inferior", "Ilíaca común", "Ilíaca externa", "Femoral común",
+                "Femoral/femoral profunda", "Poplítea",
+            ], req=True),
+            C("tipo_lesion", "Lesión", "radio", ["Oclusión", "Estenosis", "Ambas"]),
+            C("pruebas", "Pruebas diagnósticas", "multi",
+              ["Eco-doppler", "Flebo-TC", "Flebo-RM", "Flebografía", "IVUS"]),
+        ),
+        S(
+            "Técnica",
+            C("acceso", "Acceso venoso", "multi", ["Femoral", "Poplíteo", "Yugular"], req=True),
+            C("tecnicas", "Técnicas", "multi", [
+                "Venoplastia", "Stent venoso dedicado", "Stent no dedicado", "Trombectomía/AngioJet",
+                "Endoflebectomía de femoral común (híbrido)", "FAV temporal",
+            ], req=True),
+            C("ivus", "IVUS intraoperatorio", "sino"),
+            C("stent_infrainguinal", "Stent por debajo del ligamento inguinal", "sino"),
+            *material(),
+            C("anticoagulacion_post", "Tratamiento antitrombótico al alta", "multi",
+              ["HBPM", "Anticoagulante oral directo", "Antagonista de la vitamina K", "Antiagregante"]),
+        ),
+    ],
+    [S("Seguimiento específico",
+       C("permeabilidad", "Permeabilidad del stent", "radio", [
+           "Permeable (primaria)", "Permeable (primaria asistida)", "Permeable (secundaria)", "Ocluido",
+           "No valorada",
+       ], req=True),
+       C("villalta", "Escala de Villalta", "numero", min=0, max=33),
+       C("vcss", "VCSS", "numero", min=0, max=30),
+       C("ulcera", "Úlcera venosa", "select", ["No aplica", "Cicatrizada", "Abierta", "Recidivada"]),
+       C("claudicacion_venosa", "Claudicación venosa", "sino"),
+       C("anticoagulacion", "Tratamiento antitrombótico actual", "multi",
+         ["Ninguno", "HBPM", "Anticoagulante oral directo", "Antagonista de la vitamina K", "Antiagregante"]))],
+)
+
 # Isquemia aguda / embolectomía ----------------------------------------------
 _MMII = ["Miembro inferior derecho", "Miembro inferior izquierdo"]
 procedimiento(
@@ -909,9 +960,10 @@ procedimiento(
             "Indicación",
             C("lado", "Lado", "radio", ["Derecho", "Izquierdo"], req=True),
             C("indicacion", "Indicación", "select", [
-                "Isquemia crónica (CLTI)", "Infección/pie diabético", "Isquemia aguda", "Traumatismo",
+                "Isquemia crónica (CLTI)", PIE_DIABETICO_SIN_ISQUEMIA, "Isquemia aguda", "Traumatismo",
                 "Otra",
             ], req=True),
+            C("pie_diabetico", "Pie diabético", "sino", si=si("indicacion", "Isquemia crónica (CLTI)")),
             C("revascularizacion_previa", "Revascularización previa de la extremidad", "radio",
               ["No", "Sí, permeable", "Sí, fracasada", "No revascularizable"]),
         ),

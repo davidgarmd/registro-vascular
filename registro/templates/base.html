@@ -14,6 +14,7 @@
     <a href="{{ url_for('main.nuevo_paciente') }}">+ Paciente</a>
     <a href="{{ url_for('main.pacientes') }}">Pacientes</a>
     <a href="{{ url_for('main.seguimientos') }}">Seguimientos</a>
+    <a href="{{ url_for('main.actividad_mensual') }}">Actividad</a>
     {% if g.usuario.es_admin %}
       <a href="{{ url_for('auth.usuarios') }}">Usuarios</a>
       <a href="{{ url_for('main.exportar') }}">Exportar</a>

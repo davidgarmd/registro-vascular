@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from flask import (Blueprint, Response, abort, flash, g, redirect, render_template, request,
                    url_for)
 
-from . import modelos
+from . import actividad, modelos
 from .auth import admin_requerido, login_requerido
 from .db import auditar, cargar_json, get_db
 from .formularios import (ETIQUETA_HITO, PROCEDIMIENTOS, TIPOS_DISPOSITIVO, campos, formulario_cirugia,
@@ -276,6 +276,69 @@ def recordatorios_ahora():
 @admin_requerido
 def exportar():
     return render_template("exportar.html")
+
+
+def _periodo():
+    hoy = date.today()
+    desde = request.args.get("desde") or f"{hoy.year}-01"
+    hasta = request.args.get("hasta") or hoy.strftime("%Y-%m")
+    for valor in (desde, hasta):
+        try:
+            date.fromisoformat(valor + "-01")
+        except ValueError:
+            abort(400, "Mes no válido (formato AAAA-MM).")
+    if desde > hasta:
+        desde, hasta = hasta, desde
+    return desde, hasta, request.args.get("cirujano", type=int)
+
+
+@bp.route("/actividad")
+@login_requerido
+def actividad_mensual():
+    desde, hasta, cirujano_id = _periodo()
+    meses = actividad.meses_entre(desde, hasta)
+    filas = actividad.intervenciones(desde, hasta, cirujano_id)
+    return render_template("actividad.html", desde=desde, hasta=hasta, cirujano_id=cirujano_id,
+                           meses=meses, tablas=actividad.resumen(filas, meses),
+                           cirujanos=get_db().execute("SELECT id, nombre FROM usuarios ORDER BY nombre").fetchall())
+
+
+@bp.route("/actividad/<formato>.csv")
+@admin_requerido
+def actividad_csv(formato):
+    if formato not in ("resumen", "detalle"):
+        abort(404)
+    desde, hasta, cirujano_id = _periodo()
+    meses = actividad.meses_entre(desde, hasta)
+    filas = actividad.intervenciones(desde, hasta, cirujano_id)
+    salida = io.StringIO()
+    escritor = csv.writer(salida, delimiter=";")
+    if formato == "resumen":
+        tablas = actividad.resumen(filas, meses)
+        escritor.writerow(["Patología", "Subgrupo"] + meses + ["Total"])
+        patologia = ""
+        for f in tablas["patologias"]:
+            if f["nivel"] == 0:
+                patologia = f["nombre"]
+                escritor.writerow([patologia, ""] + f["valores"] + [f["total"]])
+            else:
+                escritor.writerow([patologia, f["nombre"]] + f["valores"] + [f["total"]])
+        for f in (tablas["total"], tablas["reintervenciones"]):
+            escritor.writerow([f["nombre"], ""] + f["valores"] + [f["total"]])
+        escritor.writerow([])
+        escritor.writerow(["Tipo de procedimiento", ""] + meses + ["Total"])
+        for f in tablas["procedimientos"]:
+            escritor.writerow([f["nombre"], ""] + f["valores"] + [f["total"]])
+    else:
+        columnas = ["mes", "fecha", "codigo", "sexo", "cirujano", "patologia", "subgrupo", "procedimiento",
+                    "reintervencion", "caracter", "pie_diabetico", "id"]
+        escritor.writerow(columnas)
+        for f in filas:
+            escritor.writerow([f[c] for c in columnas])
+    auditar("exportar", "actividad", None, f"{formato} {desde}..{hasta}")
+    get_db().commit()
+    return Response("\ufeff" + salida.getvalue(), mimetype="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=actividad_{formato}_{desde}_{hasta}.csv"})
 
 
 def mortalidad_30d(fecha_cirugia, datos):

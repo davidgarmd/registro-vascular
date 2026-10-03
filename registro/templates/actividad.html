@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% macro tabla(titulo, filas, extra=[]) %}
+<section class="seccion">
+  <h2>{{ titulo }}</h2>
+  <div class="tabla-ancha">
+  <table class="actividad">
+    <thead><tr><th></th>{% for m in meses %}<th>{{ m }}</th>{% endfor %}<th>Total</th></tr></thead>
+    <tbody>
+    {% for f in filas %}
+      <tr class="nivel-{{ f.nivel }}"><th scope="row">{{ f.nombre }}</th>{% for v in f.valores %}<td>{{ v or '' }}</td>{% endfor %}<td class="total">{{ f.total }}</td></tr>
+    {% else %}
+      <tr><td colspan="{{ meses|length + 2 }}" class="tenue">No hay intervenciones en este periodo.</td></tr>
+    {% endfor %}
+    {% for f in extra %}
+      <tr class="pie"><th scope="row">{{ f.nombre }}</th>{% for v in f.valores %}<td>{{ v }}</td>{% endfor %}<td class="total">{{ f.total }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endmacro %}
+{% block contenido %}
+<h1>Actividad mensual</h1>
+<form class="filtros-actividad">
+  <div class="campo"><label for="desde">Desde</label><input type="month" id="desde" name="desde" value="{{ desde }}"></div>
+  <div class="campo"><label for="hasta">Hasta</label><input type="month" id="hasta" name="hasta" value="{{ hasta }}"></div>
+  <div class="campo"><label for="cirujano">Cirujano</label>
+    <select id="cirujano" name="cirujano"><option value="">Todo el servicio</option>
+      {% for u in cirujanos %}<option value="{{ u.id }}" {% if u.id == cirujano_id %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
+    </select></div>
+  <div><button class="boton">Ver</button></div>
+</form>
+<p class="tenue">Cada intervención cuenta en su patología según la indicación registrada. Las amputaciones cuentan en la patología que las causó y aparecen además en la tabla por tipo de procedimiento. Las reintervenciones están incluidas en el total y se muestran también aparte.</p>
+{% if g.usuario.es_admin %}
+<p>
+  <a class="boton secundario pequeno" href="{{ url_for('main.actividad_csv', formato='resumen', desde=desde, hasta=hasta, cirujano=cirujano_id or '') }}">Descargar resumen (CSV)</a>
+  <a class="boton secundario pequeno" href="{{ url_for('main.actividad_csv', formato='detalle', desde=desde, hasta=hasta, cirujano=cirujano_id or '') }}">Descargar listado detallado (CSV)</a>
+</p>
+{% endif %}
+{{ tabla('Por patología', tablas.patologias, [tablas.total, tablas.reintervenciones]) }}
+{{ tabla('Por tipo de procedimiento', tablas.procedimientos, [tablas.total]) }}
+{% endblock %}

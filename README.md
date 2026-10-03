@@ -13,11 +13,11 @@ y **recordatorios por correo** a cada cirujano a 1, 3, 6 y 12 meses de la cirug�
   consultarlo dentro de la aplicación) y como huella HMAC (para buscar y evitar duplicados).
   Cada paciente recibe un código (`RV-00012`), que es lo único que aparece en correos y
   exportaciones. No se piden nombre, DNI ni fecha de nacimiento.
-- **14 grupos de procedimiento**, cada uno con su formulario: aorta abierta; EVAR/FEVAR/BEVAR
+- **15 grupos de procedimiento**, cada uno con su formulario: aorta abierta; EVAR/FEVAR/BEVAR
   (el acceso percutáneo, PEVAR, se registra en el campo de acceso); TEVAR (estándar o con
   rama para la subclavia); bypass; endovascular periférico; acceso vascular; ramas viscerales
   (isquemia mesentérica aguda y crónica, entre otras); carótida (abierta y endovascular);
-  congestión venosa pélvica; varices; isquemia aguda/embolectomía (incluye AngioJet);
+  congestión venosa pélvica; varices; síndrome postrombótico; isquemia aguda/embolectomía (incluye AngioJet);
   traumatismo vascular; amputaciones; misceláneos.
 - **Material con medidas.** En los procedimientos endovasculares se registra cada dispositivo
   (tipo, vaso, marca/modelo, diámetro y longitud), además de una descripción libre.
@@ -39,6 +39,10 @@ y **recordatorios por correo** a cada cirujano a 1, 3, 6 y 12 meses de la cirug�
   correos no llevan datos clínicos: solo el código, el hito y un enlace. Si un seguimiento
   no puede hacerse, se marca como «no realizable» y deja de avisar.
 - **Exportación a CSV** por procedimiento (cirugías y seguimientos), lista para Excel, SPSS o R.
+- **Actividad mensual** (menú *Actividad*): intervenciones por mes y por patología, con subgrupos
+  (p. ej., claudicante o no claudicante), además de por tipo de procedimiento, reintervenciones
+  aparte y filtro por cirujano. Las reglas de clasificación están en
+  [`registro/actividad.py`](registro/actividad.py).
 - **Usuarios con contraseña**, roles de cirujano y administrador, protección CSRF y un
   **registro de auditoría** (accesos, altas, ediciones, exportaciones). Bloqueo temporal
   tras varios intentos de acceso fallidos.

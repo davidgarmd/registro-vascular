@@ -34,7 +34,8 @@ def test_esquemas_coherentes():
 def test_incluye_todos_los_grupos_pedidos():
     assert set(PROCEDIMIENTOS) == {
         "aorta_abierta", "evar", "tevar", "bypass", "endo_periferico", "acceso_vascular",
-        "viscerales", "carotida", "congestion_pelvica", "varices", "isquemia_aguda", "trauma",
+        "viscerales", "carotida", "congestion_pelvica", "varices", "sindrome_postrombotico",
+        "isquemia_aguda", "trauma",
         "amputacion", "miscelanea",
     }
 
