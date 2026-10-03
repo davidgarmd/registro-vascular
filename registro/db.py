@@ -21,7 +21,21 @@ def close_db(_exc=None):
 
 def init_db():
     schema = resources.files("registro").joinpath("schema.sql").read_text(encoding="utf-8")
-    get_db().executescript(schema)
+    db = get_db()
+    db.executescript(schema)
+    migrar(db)
+
+
+def migrar(db):
+    """Añade a una base de datos existente las columnas de versiones posteriores."""
+    columnas = {fila[1] for fila in db.execute("PRAGMA table_info(procedimientos)")}
+    if "procedimiento_origen_id" not in columnas:
+        db.execute("ALTER TABLE procedimientos ADD COLUMN procedimiento_origen_id INTEGER "
+                   "REFERENCES procedimientos(id)")
+    if "con_seguimiento" not in columnas:
+        db.execute("ALTER TABLE procedimientos ADD COLUMN con_seguimiento INTEGER NOT NULL DEFAULT 1")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_proc_origen ON procedimientos (procedimiento_origen_id)")
+    db.commit()
 
 
 def auditar(accion, entidad=None, entidad_id=None, detalle=None, usuario_id=None):

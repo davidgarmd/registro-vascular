@@ -3,13 +3,15 @@ from werkzeug.datastructures import MultiDict
 from registro.formularios import (PROCEDIMIENTOS, campos, formulario_cirugia, formulario_seguimiento,
                                   procesar)
 
-TIPOS_VALIDOS = {"texto", "area", "numero", "fecha", "select", "radio", "multi", "sino"}
+TIPOS_VALIDOS = {"texto", "area", "numero", "fecha", "select", "radio", "multi", "sino", "dispositivos"}
 
 
 def _formularios():
     for tipo in PROCEDIMIENTOS:
         yield f"{tipo}/cirugia", formulario_cirugia(tipo)
-        yield f"{tipo}/seguimiento", formulario_seguimiento(tipo)
+        yield f"{tipo}/reintervencion", formulario_cirugia(tipo, reintervencion=True)
+        for hito in ("1m", "3m", None):
+            yield f"{tipo}/seguimiento-{hito}", formulario_seguimiento(tipo, hito)
 
 
 def test_esquemas_coherentes():
@@ -32,7 +34,8 @@ def test_esquemas_coherentes():
 def test_incluye_todos_los_grupos_pedidos():
     assert set(PROCEDIMIENTOS) == {
         "aorta_abierta", "evar", "tevar", "bypass", "endo_periferico", "acceso_vascular",
-        "viscerales", "carotida", "congestion_pelvica", "varices", "miscelanea",
+        "viscerales", "carotida", "congestion_pelvica", "varices", "isquemia_aguda", "trauma",
+        "amputacion", "miscelanea",
     }
 
 

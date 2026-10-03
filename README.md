@@ -13,11 +13,20 @@ y **recordatorios por correo** a cada cirujano a 1, 3, 6 y 12 meses de la cirug�
   consultarlo dentro de la aplicación) y como huella HMAC (para buscar y evitar duplicados).
   Cada paciente recibe un código (`RV-00012`), que es lo único que aparece en correos y
   exportaciones. No se piden nombre, DNI ni fecha de nacimiento.
-- **11 grupos de procedimiento**, cada uno con su formulario: aorta abierta; EVAR/FEVAR/BEVAR
+- **14 grupos de procedimiento**, cada uno con su formulario: aorta abierta; EVAR/FEVAR/BEVAR
   (el acceso percutáneo, PEVAR, se registra en el campo de acceso); TEVAR (estándar o con
   rama para la subclavia); bypass; endovascular periférico; acceso vascular; ramas viscerales
   (isquemia mesentérica aguda y crónica, entre otras); carótida (abierta y endovascular);
-  congestión venosa pélvica; varices; misceláneos.
+  congestión venosa pélvica; varices; isquemia aguda/embolectomía (incluye AngioJet);
+  traumatismo vascular; amputaciones; misceláneos.
+- **Material con medidas.** En los procedimientos endovasculares se registra cada dispositivo
+  (tipo, vaso, marca/modelo, diámetro y longitud), además de una descripción libre.
+- **Reintervenciones enlazadas.** Una reintervención se registra como una intervención nueva
+  unida a la original (motivo y relación). En la ficha del paciente se ven en árbol, y puede
+  tener sus propios seguimientos o no. El seguimiento de la intervención original continúa,
+  lo que permite calcular la permeabilidad primaria y secundaria y la libertad de reintervención.
+- **Resultados a 30 días** en el seguimiento al mes: reingreso y su motivo. La mortalidad a
+  30 días se calcula sola en la exportación (columna `mortalidad_30d`).
 - **Formularios dinámicos.** Los campos aparecen u ocultan según lo elegido. Por ejemplo,
   al marcar BEVAR aparecen los vasos diana; al marcar PEVAR, el dispositivo de cierre; al
   elegir carótida endovascular, la protección embólica. El servidor valida con las mismas reglas.

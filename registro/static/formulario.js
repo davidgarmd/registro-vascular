@@ -7,7 +7,7 @@
   const campos = Array.from(form.querySelectorAll(".campo[data-nombre]"));
 
   function valores(nombre) {
-    const inputs = form.querySelectorAll(`[name="${CSS.escape(nombre)}"]`);
+    const inputs = form.querySelectorAll(`[name="${CSS.escape(nombre)}"]`);  // los campos condicionantes nunca son de dispositivos
     const out = [];
     inputs.forEach((el) => {
       if (el.disabled) return;
@@ -40,6 +40,19 @@
       div.querySelectorAll("input, select, textarea").forEach((el) => (el.disabled = !ver));
     });
   }
+
+  // Filas de dispositivos (material con medidas).
+  form.addEventListener("click", (e) => {
+    const anadir = e.target.closest(".anadir-dispositivo");
+    if (anadir) {
+      const caja = anadir.parentElement.querySelector(".dispositivos");
+      caja.appendChild(caja.querySelector("template").content.cloneNode(true));
+      caja.lastElementChild.querySelector("select").focus();
+      actualizar();
+    }
+    const quitar = e.target.closest(".quitar-dispositivo");
+    if (quitar) quitar.closest(".disp-fila").remove();
+  });
 
   // "Ninguno/Ninguna" excluye al resto de opciones en las casillas múltiples.
   form.addEventListener("change", (e) => {

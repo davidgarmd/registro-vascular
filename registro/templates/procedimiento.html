@@ -5,11 +5,26 @@
   <div>
     <h1>{{ PROCEDIMIENTOS[proc.tipo].nombre }} · {{ proc.fecha_cirugia }}</h1>
     <p class="tenue">Paciente <a href="{{ url_for('main.paciente', paciente_id=proc.paciente_id) }}">{{ proc.codigo }}</a> · Responsable: {{ proc.cirujano }}</p>
+    {% if origen %}<p>Reintervención de: <a href="{{ url_for('main.procedimiento', procedimiento_id=origen.id) }}">{{ PROCEDIMIENTOS[origen.tipo].nombre }} del {{ origen.fecha_cirugia }}</a></p>{% endif %}
   </div>
-  <a class="boton secundario" href="{{ url_for('main.editar_procedimiento', procedimiento_id=proc.id) }}">Editar</a>
+  <div class="acciones-fila">
+    <a class="boton" href="{{ url_for('main.nuevo_procedimiento', paciente_id=proc.paciente_id, origen=proc.id) }}">+ Reintervención</a>
+    <a class="boton secundario" href="{{ url_for('main.editar_procedimiento', procedimiento_id=proc.id) }}">Editar</a>
+  </div>
 </div>
+{% if reintervenciones %}
+<section class="seccion">
+  <h2>Reintervenciones sobre esta intervención</h2>
+  <ul class="lista">
+    {% for r in reintervenciones %}
+      <li><a href="{{ url_for('main.procedimiento', procedimiento_id=r.id) }}">{{ PROCEDIMIENTOS[r.tipo].nombre }} · {{ r.fecha_cirugia }}</a> · {{ r.cirujano }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 <section class="seccion">
   <h2>Seguimientos</h2>
+  {% if not seguimientos %}<p class="tenue">Esta reintervención no tiene seguimientos propios: el seguimiento continúa en la intervención original.</p>{% endif %}
   <div class="hitos">
     {% for s in seguimientos %}
       <a class="hito" href="{{ url_for('main.seguimiento', seguimiento_id=s.id) }}">

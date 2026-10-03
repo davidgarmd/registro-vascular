@@ -5,7 +5,8 @@ lista de campos. Un campo es un diccionario con:
 
     nombre     identificador interno (único dentro del formulario)
     etiqueta   texto que ve el usuario
-    tipo       texto | area | numero | fecha | select | radio | multi | sino
+    tipo       texto | area | numero | fecha | select | radio | multi | sino | dispositivos
+               (dispositivos = lista de filas: tipo, vaso, marca/modelo, diámetro y longitud)
     opciones   lista de valores (select, radio, multi)
     req        obligatorio cuando el campo está visible
     si         condición de visibilidad: {"campo": x, "valores": [...]}
@@ -118,7 +119,8 @@ COMUN_SEGUIMIENTO = [
         C("tipo_revision", "Tipo de revisión", "radio",
           ["Presencial", "Telefónica", "Revisión de historia clínica"], req=True),
         C("estado_vital", "Estado vital", "radio", ["Vivo", "Fallecido"], req=True),
-        C("fecha_fallecimiento", "Fecha de fallecimiento", "fecha", si=si("estado_vital", "Fallecido")),
+        C("fecha_fallecimiento", "Fecha de fallecimiento", "fecha", si=si("estado_vital", "Fallecido"),
+          req=True),
         C("causa_muerte", "Causa de la muerte", "select", [
             "Relacionada con el procedimiento", "Cardiovascular", "Otra causa", "Desconocida",
         ], si=si("estado_vital", "Fallecido")),
@@ -144,6 +146,31 @@ COMUN_SEGUIMIENTO = [
 # ---------------------------------------------------------------------------
 
 ENDOFUGAS = ["Ninguna", "Tipo Ia", "Tipo Ib", "Tipo II", "Tipo III", "Tipo IV"]
+
+TIPOS_DISPOSITIVO = [
+    "Balón", "Balón farmacoactivo", "Balón de corte/scoring",
+    "Stent autoexpandible", "Stent balón-expandible", "Stent farmacoactivo",
+    "Stent cubierto autoexpandible", "Stent cubierto balón-expandible", "Stent venoso",
+    "Endoprótesis aórtica (cuerpo principal)", "Endoprótesis (rama/extensión/cuff)",
+    "Rama ilíaca (IBE)", "Coil", "Plug", "Dispositivo de cierre", "Otro",
+]
+TECNICAS_ENDO_PERIFERICAS = [
+    "Angioplastia simple", "Balón farmacoactivo", "Balón de corte/scoring",
+    "Stent metálico desnudo", "Stent farmacoactivo", "Stent cubierto", "Aterectomía",
+    "Litotricia intravascular", "Trombectomía/aspiración", "Fibrinólisis",
+]
+AMPUTACION_SEGUIMIENTO = C(
+    "amputacion", "Amputación desde la última revisión", "radio",
+    ["No", "Digital", "Transmetatarsiana", "Infracondílea", "Supracondílea"])
+
+
+def material(si=None):
+    """Material implantado con medidas + descripción libre del procedimiento endovascular."""
+    return [
+        C("dispositivos", "Material utilizado (con medidas)", "dispositivos", si=si,
+          ayuda="Añade una fila por dispositivo. Diámetro y longitud en mm."),
+        C("material_detalle", "Descripción del procedimiento endovascular / material", "area", si=si),
+    ]
 RUTHERFORD = [
     "0 - Asintomático", "1 - Claudicación leve", "2 - Claudicación moderada",
     "3 - Claudicación grave", "4 - Dolor en reposo", "5 - Pérdida tisular menor",
@@ -165,8 +192,7 @@ WIFI = [
 SEGUIMIENTO_EXTREMIDAD = [
     C("rutherford_actual", "Rutherford actual", "select", RUTHERFORD),
     C("itb", "Índice tobillo-brazo", "numero", min=0, max=3, ayuda="Usa punto decimal: 0.85"),
-    C("amputacion_mayor", "Amputación mayor", "radio", ["No", "Infracondílea", "Supracondílea"]),
-    C("amputacion_menor", "Amputación menor (dedos/transmetatarsiana)", "sino"),
+    AMPUTACION_SEGUIMIENTO,
     C("cicatrizacion", "Lesión trófica", "select",
       ["No aplica", "Cicatrizada", "En proceso de cicatrización", "Sin cambios", "Empeora"]),
 ]
@@ -314,6 +340,7 @@ procedimiento(
             C("fluoroscopia_min", "Tiempo de fluoroscopia", "numero", min=0, max=600, unidad="min"),
             C("dosis_radiacion", "Dosis (DAP)", "numero", min=0, unidad="Gy·cm²"),
             C("endofuga_final", "Endofuga en la angiografía final", "multi", ENDOFUGAS, req=True),
+            *material(),
         ),
     ],
     [S("Seguimiento específico", *SEGUIMIENTO_AORTA_ENDO,
@@ -363,6 +390,7 @@ procedimiento(
             C("contraste_ml", "Contraste", "numero", min=0, max=1000, unidad="ml"),
             C("fluoroscopia_min", "Tiempo de fluoroscopia", "numero", min=0, max=600, unidad="min"),
             C("endofuga_final", "Endofuga en la angiografía final", "multi", ENDOFUGAS, req=True),
+            *material(),
         ),
     ],
     [S("Seguimiento específico", *SEGUIMIENTO_AORTA_ENDO,
@@ -407,8 +435,18 @@ procedimiento(
                 "PTFE heparinizado", "Dacron", "Aloinjerto criopreservado",
             ], req=True),
             C("endarterectomia_femoral", "Endarterectomía femoral asociada", "sino"),
-            C("hibrido", "Procedimiento híbrido (endovascular asociado)", "sino"),
+            C("profundoplastia", "Profundoplastia (plastia de femoral profunda)", "sino"),
             C("amputacion_menor_asociada", "Amputación menor/desbridamiento asociado", "sino"),
+        ),
+        S(
+            "Procedimiento híbrido",
+            C("hibrido", "Tratamiento endovascular asociado (híbrido)", "sino", req=True),
+            C("sector_hibrido", "Sector tratado por vía endovascular", "multi", [
+                "Aortoilíaco (entrada)", "Femoral superficial/poplítea", "Troncos distales (salida)",
+            ], si=si("hibrido", "Sí"), req=True),
+            C("tecnicas_hibrido", "Técnica endovascular", "multi", TECNICAS_ENDO_PERIFERICAS,
+              si=si("hibrido", "Sí"), req=True),
+            *material(si=si("hibrido", "Sí")),
         ),
     ],
     [S("Seguimiento específico",
@@ -446,12 +484,9 @@ procedimiento(
                 "Tibiopedio retrógrado",
             ], req=True),
             C("recanalizacion", "Recanalización", "radio", ["Intraluminal", "Subintimal", "No aplica"]),
-            C("tecnicas", "Técnicas empleadas", "multi", [
-                "Angioplastia simple", "Balón farmacoactivo", "Balón de corte/scoring",
-                "Stent metálico desnudo", "Stent farmacoactivo", "Stent cubierto", "Aterectomía",
-                "Litotricia intravascular", "Trombectomía/aspiración", "Fibrinólisis",
-            ], req=True),
+            C("tecnicas", "Técnicas empleadas", "multi", TECNICAS_ENDO_PERIFERICAS, req=True),
             C("cierre", "Cierre del acceso", "select", ["Compresión manual", "Dispositivo de cierre", "Quirúrgico"]),
+            *material(),
         ),
     ],
     [S("Seguimiento específico",
@@ -467,6 +502,10 @@ _creacion = [
     "FAV humerobasílica en un tiempo", "FAV humerobasílica en dos tiempos",
     "Prótesis (PTFE) en brazo/antebrazo", "Prótesis en muslo",
 ]
+_PRIMARIA = "Primaria (acceso nuevo)"
+_SECUNDARIA = "Secundaria (complicación de un acceso existente)"
+_RESECCION_INFECCION = "Resección del segmento infectado + interposición de injerto"
+_RESECCION_ANEURISMA = "Resección + interposición de injerto"
 procedimiento(
     "acceso_vascular", "Acceso vascular",
     "Creación, mantenimiento y rescate de accesos para hemodiálisis.",
@@ -482,16 +521,58 @@ procedimiento(
         ),
         S(
             "Procedimiento",
-            C("tipo_procedimiento", "Procedimiento", "select", _creacion + [
-                "Superficialización/transposición (2.º tiempo)", "Rescate quirúrgico de FAV",
-                "Angioplastia de FAV", "Trombectomía de FAV", "Ligadura/cierre de FAV",
-                "Cirugía de robo (DRIL, banding…)", "Otro",
-            ], req=True),
+            C("cirugia", "Tipo de cirugía", "radio", [_PRIMARIA, _SECUNDARIA], req=True),
+            C("tipo_procedimiento", "Acceso creado", "select", _creacion + [
+                "Superficialización/transposición (2.º tiempo)", "Otro",
+            ], si=si("cirugia", _PRIMARIA), req=True),
             C("diametro_arteria_mm", "Diámetro de la arteria", "numero", min=0, max=15, unidad="mm",
-              si=si("tipo_procedimiento", *_creacion)),
+              si=si("cirugia", _PRIMARIA)),
             C("diametro_vena_mm", "Diámetro de la vena", "numero", min=0, max=15, unidad="mm",
-              si=si("tipo_procedimiento", *_creacion)),
+              si=si("cirugia", _PRIMARIA)),
+            C("acceso_afectado", "Acceso afectado", "select", [
+                "FAV radiocefálica", "FAV humerocefálica", "FAV humerobasílica",
+                "Prótesis en brazo/antebrazo", "Prótesis en muslo", "Otro",
+            ], si=si("cirugia", _SECUNDARIA), req=True),
+            C("complicacion_acceso", "Complicación que motiva la cirugía", "select", [
+                "Infección", "Degeneración aneurismática", "Pseudoaneurisma", "Síndrome de robo",
+                "Hiperaflujo", "Trombosis", "Estenosis/disfunción", "Otra",
+            ], si=si("cirugia", _SECUNDARIA), req=True),
+            C("tecnica_infeccion", "Técnica", "select", [
+                "Cierre/ligadura de la FAV", _RESECCION_INFECCION,
+                "Resección del segmento infectado + bypass de rodeo", "Explante completo de la prótesis",
+                "Otra",
+            ], si=si("complicacion_acceso", "Infección"), req=True),
+            C("injerto_infeccion", "Injerto de interposición", "radio", ["Venoso", "Protésico"],
+              si=si("tecnica_infeccion", _RESECCION_INFECCION)),
+            C("tecnica_aneurisma", "Técnica", "select", [
+                "Resección + plastia (aneurismorrafia)", _RESECCION_ANEURISMA,
+                "Cierre/ligadura de la FAV", "Exclusión con stent cubierto", "Otra",
+            ], si=si("complicacion_acceso", "Degeneración aneurismática", "Pseudoaneurisma"), req=True),
+            C("injerto_aneurisma", "Injerto de interposición", "radio", ["Venoso", "Protésico"],
+              si=si("tecnica_aneurisma", _RESECCION_ANEURISMA)),
+            C("tecnica_robo", "Técnica", "select", [
+                "DRIL", "RUDI", "PAI (proximalización del flujo arterial)", "Banding",
+                "Cierre/ligadura de la FAV", "Otra",
+            ], si=si("complicacion_acceso", "Síndrome de robo"), req=True),
+            C("tecnica_hiperaflujo", "Técnica", "select", [
+                "Banding / MILLER", "RUDI", "Cierre/ligadura de la FAV", "Otra",
+            ], si=si("complicacion_acceso", "Hiperaflujo"), req=True),
+            C("tecnica_trombosis", "Técnica", "select", [
+                "Trombectomía quirúrgica", "Trombectomía/tromboaspiración endovascular",
+                "Trombectomía + angioplastia", "Trombectomía + revisión quirúrgica (nueva anastomosis)",
+                "Otra",
+            ], si=si("complicacion_acceso", "Trombosis"), req=True),
+            C("tecnica_estenosis", "Técnica", "select", [
+                "Angioplastia", "Angioplastia + stent", "Revisión quirúrgica (nueva anastomosis/parche)",
+                "Otra",
+            ], si=si("complicacion_acceso", "Estenosis/disfunción"), req=True),
+            C("cirugia_asociada", "Cirugía asociada en el mismo acto", "multi", [
+                "Ninguna", "Creación de un nuevo acceso", "Colocación de catéter de diálisis", "Otra",
+            ], si=si("cirugia", _SECUNDARIA)),
+            C("detalle_tecnica", "Detalle de la técnica / cirugía asociada", "area",
+              si=si("cirugia", _SECUNDARIA)),
             C("thrill_final", "Thrill al final de la intervención", "sino"),
+            *material(si=si("cirugia", _SECUNDARIA)),
         ),
     ],
     [S("Seguimiento específico",
@@ -504,8 +585,9 @@ procedimiento(
        C("intervenciones_mantenimiento", "Intervenciones de mantenimiento desde la última revisión",
          "numero", min=0, max=50),
        C("complicaciones_acceso", "Complicaciones", "multi", [
-           "Ninguna", "Síndrome de robo", "Hiperaflujo/insuficiencia cardiaca", "Infección",
-           "Aneurisma/pseudoaneurisma", "Estenosis venosa central",
+           "Ninguna", "Infección", "Degeneración aneurismática", "Pseudoaneurisma",
+           "Síndrome de robo", "Hiperaflujo/insuficiencia cardiaca", "Trombosis",
+           "Estenosis venosa central",
        ]))],
 )
 
@@ -554,6 +636,7 @@ procedimiento(
             C("longitud_reseccion_cm", "Longitud resecada", "numero", min=0, max=800, unidad="cm",
               si=si("reseccion_intestinal", "Sí")),
             C("second_look", "Second look", "sino", si=si("laparotomia", "Sí")),
+            *material(),
         ),
     ],
     [S("Seguimiento específico",
@@ -605,6 +688,7 @@ procedimiento(
               si=si("abordaje", "Endovascular")),
             C("stent", "Tipo de stent", "select", ["Celda abierta", "Celda cerrada", "Doble malla"],
               si=si("abordaje", "Endovascular")),
+            *material(si=si("abordaje", "Endovascular")),
             C("complicaciones_carotida", "Complicaciones específicas", "multi", [
                 "Ninguna", "Ictus homolateral", "Síndrome de hiperperfusión", "Bradicardia/hipotensión",
                 "Lesión de nervio craneal", "Hematoma cervical",
@@ -655,6 +739,7 @@ procedimiento(
                 "Coils", "Plug", "Espuma esclerosante", "Cianoacrilato", "Stent venoso",
                 "Transposición de vena renal izquierda", "Otra",
             ], req=True),
+            *material(),
         ),
     ],
     [S("Seguimiento específico",
@@ -711,6 +796,148 @@ procedimiento(
        C("satisfaccion", "Satisfacción del paciente (0-10)", "numero", min=0, max=10))],
 )
 
+# Isquemia aguda / embolectomía ----------------------------------------------
+_MMII = ["Miembro inferior derecho", "Miembro inferior izquierdo"]
+procedimiento(
+    "isquemia_aguda", "Isquemia aguda / embolectomía",
+    "Embolectomía y trombectomía con Fogarty, tromboaspiración (AngioJet) y fibrinólisis en la "
+    "isquemia aguda de extremidades.",
+    [
+        S(
+            "Indicación",
+            C("extremidad", "Extremidad", "radio",
+              _MMII + ["Miembro superior derecho", "Miembro superior izquierdo"], req=True),
+            C("etiologia", "Etiología", "select", [
+                "Embólica", "Trombosis in situ (arteria nativa)", "Trombosis de bypass",
+                "Trombosis de stent", "Aneurisma poplíteo trombosado", "Disección/traumatismo",
+                "Desconocida",
+            ], req=True),
+            C("origen_embolia", "Origen de la embolia", "select",
+              ["Fibrilación auricular", "Otra cardiopatía", "Aneurisma proximal", "Desconocido"],
+              si=si("etiologia", "Embólica")),
+            C("rutherford_agudo", "Clasificación de Rutherford", "select", [
+                "I - Viable", "IIa - Amenaza marginal", "IIb - Amenaza inmediata", "III - Irreversible",
+            ], req=True),
+            C("horas_evolucion", "Horas de evolución", "numero", min=0, max=720, unidad="h"),
+        ),
+        S(
+            "Técnica",
+            C("abordaje", "Abordaje", "multi",
+              ["Femoral", "Poplíteo", "Humeral", "Percutáneo"], req=True),
+            C("embolectomia", "Embolectomía/trombectomía con catéter de Fogarty", "sino", req=True),
+            C("direccion_embolectomia", "Dirección", "radio",
+              ["Proximal", "Distal", "Proximal y distal"], si=si("embolectomia", "Sí"), req=True),
+            C("territorios", "Territorios recanalizados", "multi", [
+                "Ilíaca", "Femoral común", "Femoral superficial", "Femoral profunda", "Poplítea",
+                "Troncos distales", "Subclavia/axilar", "Humeral", "Radial/cubital",
+            ], si=si("embolectomia", "Sí"), req=True),
+            C("tromboaspiracion", "Tromboaspiración (AngioJet)", "sino", req=True),
+            C("fibrinolisis", "Fibrinólisis", "radio",
+              ["No", "Intraoperatoria", "Por catéter (posoperatoria)"]),
+            C("tratamiento_adjunto", "Tratamiento adjunto", "multi", [
+                "Ninguno", "Angioplastia", "Stent", "Bypass", "Endarterectomía/parche", "Fasciotomía",
+            ]),
+            C("angiografia_final", "Angiografía de control", "sino"),
+            *material(si=si("tratamiento_adjunto", "Angioplastia", "Stent")),
+        ),
+    ],
+    [S("Seguimiento específico",
+       C("permeabilidad", "Permeabilidad del eje tratado", "radio",
+         ["Permeable", "Reoclusión", "No valorada"], req=True),
+       C("anticoagulacion", "Anticoagulación al alta/actual", "sino"),
+       *SEGUIMIENTO_EXTREMIDAD)],
+)
+
+# Traumatismo vascular -------------------------------------------------------
+_abierto = ["Cirugía abierta", "Híbrido"]
+_endo = ["Endovascular", "Híbrido"]
+procedimiento(
+    "trauma", "Traumatismo vascular",
+    "Lesiones vasculares traumáticas e iatrogénicas: región, mecanismo y tratamiento abierto o endovascular.",
+    [
+        S(
+            "Lesión",
+            C("region", "Región", "radio",
+              ["Miembro superior", "Miembro inferior", "Abdomen", "Tórax", "Cuello"], req=True),
+            C("lado", "Lado", "radio", ["Derecho", "Izquierdo", "Línea media/no aplica"]),
+            C("mecanismo", "Mecanismo", "radio", ["Penetrante", "Contuso", "Iatrogénico"], req=True),
+            C("tipo_lesion", "Tipo de lesión", "multi", [
+                "Sección completa", "Laceración parcial", "Disección/trombosis", "Pseudoaneurisma",
+                "Fístula arteriovenosa", "Espasmo/compresión",
+            ], req=True),
+            C("vaso", "Vaso lesionado (opcional)"),
+            C("lesiones_asociadas", "Lesiones asociadas", "multi", [
+                "Ninguna", "Fractura/luxación", "Lesión venosa", "Lesión nerviosa", "Lesión visceral",
+                "Traumatismo craneoencefálico",
+            ]),
+            C("shock", "Shock al ingreso", "sino"),
+        ),
+        S(
+            "Tratamiento",
+            C("tratamiento", "Tipo de tratamiento", "radio",
+              ["Cirugía abierta", "Endovascular", "Híbrido", "Conservador/observación"], req=True),
+            C("tecnica_abierta", "Técnica abierta", "multi", [
+                "Ligadura", "Sutura/reparación directa", "Parche", "Anastomosis término-terminal",
+                "Interposición de injerto venoso", "Interposición de injerto protésico", "Bypass",
+                "Shunt temporal",
+            ], si=si("tratamiento", *_abierto), req=True),
+            C("tecnica_endo", "Técnica endovascular", "multi", [
+                "Embolización", "Stent cubierto", "Stent no cubierto", "Balón de oclusión/control proximal",
+            ], si=si("tratamiento", *_endo), req=True),
+            *material(si=si("tratamiento", *_endo)),
+            C("reparacion_venosa", "Reparación venosa asociada", "sino",
+              si=si("tratamiento", *_abierto)),
+            C("fasciotomia", "Fasciotomía", "sino",
+              si=si("region", "Miembro superior", "Miembro inferior")),
+        ),
+    ],
+    [S("Seguimiento específico",
+       C("permeabilidad", "Permeabilidad de la reparación", "radio",
+         ["Permeable", "Estenosis", "Ocluida", "No aplica (ligadura/embolización)"]),
+       AMPUTACION_SEGUIMIENTO,
+       C("secuelas_neurologicas", "Secuelas neurológicas en la extremidad", "sino"),
+       C("infeccion", "Infección de la reparación", "sino"))],
+)
+
+# Amputaciones ---------------------------------------------------------------
+_MAYORES = ["Supracondílea", "Infracondílea", "Desarticulación de rodilla", "Desarticulación de cadera"]
+procedimiento(
+    "amputacion", "Amputaciones",
+    "Amputaciones mayores (supracondílea, infracondílea) y menores (transmetatarsiana, digital).",
+    [
+        S(
+            "Indicación",
+            C("lado", "Lado", "radio", ["Derecho", "Izquierdo"], req=True),
+            C("indicacion", "Indicación", "select", [
+                "Isquemia crónica (CLTI)", "Infección/pie diabético", "Isquemia aguda", "Traumatismo",
+                "Otra",
+            ], req=True),
+            C("revascularizacion_previa", "Revascularización previa de la extremidad", "radio",
+              ["No", "Sí, permeable", "Sí, fracasada", "No revascularizable"]),
+        ),
+        S(
+            "Técnica",
+            C("nivel", "Nivel", "select", _MAYORES + ["Transmetatarsiana", "Chopart/Lisfranc", "Digital"],
+              req=True),
+            C("dedos", "Dedos amputados", "multi", ["1.º", "2.º", "3.º", "4.º", "5.º"],
+              si=si("nivel", "Digital"), req=True),
+            C("cierre", "Cierre", "radio", [
+                "Cierre primario", "Abierta/guillotina (dos tiempos)", "Cierre diferido/terapia de presión negativa",
+            ]),
+            C("reamputacion", "Reamputación (nivel más proximal tras una amputación previa)", "sino"),
+        ),
+    ],
+    [S("Seguimiento específico",
+       C("estado_munon", "Estado del muñón/herida", "select",
+         ["Cicatrizado", "En proceso de cicatrización", "Dehiscencia/necrosis", "Infección"], req=True),
+       C("reamputacion_seguimiento", "Reamputación a un nivel superior", "radio",
+         ["No", "Sí, menor", "Sí, mayor"]),
+       C("deambulacion", "Deambulación", "select", [
+           "Autónoma sin ayudas", "Con prótesis", "Con ayudas (bastón/andador)", "Silla de ruedas",
+           "Encamado",
+       ]))],
+)
+
 # Misceláneos ----------------------------------------------------------------
 procedimiento(
     "miscelanea", "Misceláneos",
@@ -719,8 +946,7 @@ procedimiento(
         S(
             "Procedimiento",
             C("categoria", "Categoría", "select", [
-                "Amputación mayor", "Amputación menor", "Trauma vascular",
-                "Embolectomía/trombectomía aislada", "Fasciotomía", "Aneurisma periférico (no poplíteo)",
+                "Fasciotomía", "Aneurisma periférico (no poplíteo)",
                 "Síndrome del opérculo torácico", "Malformación vascular", "Trombectomía venosa profunda",
                 "Filtro de vena cava", "Infección protésica", "Otra",
             ], req=True),
@@ -746,17 +972,47 @@ HITOS = [
 ETIQUETA_HITO = {clave: etiqueta for clave, _, etiqueta in HITOS}
 
 
+# Solo en el seguimiento al mes.
+SEGUIMIENTO_30_DIAS = S(
+    "Resultados a 30 días",
+    C("reingreso_30d", "Reingreso hospitalario en los primeros 30 días", "sino", req=True),
+    C("reingreso_fecha", "Fecha del reingreso", "fecha", si=si("reingreso_30d", "Sí")),
+    C("reingreso_motivo", "Motivo del reingreso", "select", [
+        "Infección de herida", "Trombosis/fallo del procedimiento", "Hemorragia/hematoma",
+        "Isquemia de la extremidad", "Causa cardiaca", "Causa renal", "Otra",
+    ], si=si("reingreso_30d", "Sí"), req=True),
+    C("reingreso_relacionado", "Relacionado con el procedimiento", "sino", si=si("reingreso_30d", "Sí")),
+)
+
+# Solo cuando la intervención es una reintervención de otra registrada.
+DATOS_REINTERVENCION = S(
+    "Reintervención",
+    C("reint_motivo", "Motivo de la reintervención", "select", [
+        "Trombosis/oclusión", "Reestenosis", "Endofuga", "Migración/desconexión", "Crecimiento del saco",
+        "Infección", "Complicación de la herida", "Hemorragia/hematoma", "Pseudoaneurisma",
+        "Isquemia persistente/progresión de la enfermedad", "Otra",
+    ], req=True),
+    C("reint_relacion", "Relación con el procedimiento previo", "radio", [
+        "Sobre el mismo procedimiento/lesión diana", "Misma extremidad o territorio, lesión distinta",
+    ], req=True),
+    C("reint_mismo_ingreso", "Durante el mismo ingreso", "sino"),
+)
+
+
 # ---------------------------------------------------------------------------
 # Acceso a los formularios
 # ---------------------------------------------------------------------------
 
-def formulario_cirugia(tipo):
+def formulario_cirugia(tipo, reintervencion=False):
     p = PROCEDIMIENTOS[tipo]
-    return COMUN_PREOPERATORIO + p["secciones"] + [COMUN_INTRAOPERATORIO] + COMUN_POSTOPERATORIO
+    inicio = [DATOS_REINTERVENCION] if reintervencion else []
+    return inicio + COMUN_PREOPERATORIO + p["secciones"] + [COMUN_INTRAOPERATORIO] + COMUN_POSTOPERATORIO
 
 
-def formulario_seguimiento(tipo):
-    return COMUN_SEGUIMIENTO + PROCEDIMIENTOS[tipo]["seguimiento"]
+def formulario_seguimiento(tipo, hito=None):
+    """Con hito=None devuelve todos los campos posibles (útil para exportar)."""
+    treinta = [SEGUIMIENTO_30_DIAS] if hito in (None, "1m") else []
+    return COMUN_SEGUIMIENTO + treinta + PROCEDIMIENTOS[tipo]["seguimiento"]
 
 
 def campos(secciones):
@@ -792,7 +1048,12 @@ def procesar(secciones, form):
         if not visible(c, datos):
             continue
         nombre, tipo = c["nombre"], c["tipo"]
-        if tipo == "multi":
+        if tipo == "dispositivos":
+            valor, error = _procesar_dispositivos(nombre, form)
+            if error:
+                errores[nombre] = error
+                continue
+        elif tipo == "multi":
             valor = [v for v in form.getlist(nombre) if v in c["opciones"]]
         else:
             valor = (form.get(nombre) or "").strip()
@@ -820,6 +1081,31 @@ def procesar(secciones, form):
     return datos, errores
 
 
+COLUMNAS_DISPOSITIVO = ("tipo", "vaso", "modelo", "diametro", "longitud")
+
+
+def _procesar_dispositivos(nombre, form):
+    columnas = {col: form.getlist(f"{nombre}__{col}") for col in COLUMNAS_DISPOSITIVO}
+    filas = []
+    for i in range(max(len(v) for v in columnas.values())):
+        fila = {col: (columnas[col][i] if i < len(columnas[col]) else "").strip() for col in COLUMNAS_DISPOSITIVO}
+        if not any(fila.values()):
+            continue
+        if fila["tipo"] not in TIPOS_DISPOSITIVO:
+            return None, f"Fila {len(filas) + 1}: elige el tipo de dispositivo."
+        for col, maximo in (("diametro", 60), ("longitud", 500)):
+            if fila[col]:
+                try:
+                    numero = float(fila[col].replace(",", "."))
+                except ValueError:
+                    return None, f"Fila {len(filas) + 1}: el {col} debe ser un número."
+                if not 0 < numero <= maximo:
+                    return None, f"Fila {len(filas) + 1}: {col} fuera de rango (0-{maximo} mm)."
+                fila[col] = int(numero) if numero.is_integer() else numero
+        filas.append({k: v for k, v in fila.items() if v != ""})
+    return filas, None
+
+
 def _fecha_valida(texto):
     from datetime import date
     try:
@@ -829,7 +1115,14 @@ def _fecha_valida(texto):
         return False
 
 
+def dispositivo_legible(d):
+    medidas = "×".join(str(d[k]) for k in ("diametro", "longitud") if k in d)
+    partes = [d.get("tipo", ""), f"{medidas} mm" if medidas else "",
+              f"({d['modelo']})" if d.get("modelo") else "", f"en {d['vaso']}" if d.get("vaso") else ""]
+    return " ".join(p for p in partes if p)
+
+
 def valor_legible(valor):
     if isinstance(valor, list):
-        return " | ".join(str(v) for v in valor)
+        return " | ".join(dispositivo_legible(v) if isinstance(v, dict) else str(v) for v in valor)
     return "" if valor is None else str(valor)

@@ -1,9 +1,33 @@
+{% macro fila_dispositivo(nombre, d) %}
+<div class="disp-fila">
+  <select name="{{ nombre }}__tipo" aria-label="Tipo de dispositivo">
+    <option value="">—</option>
+    {% for t in TIPOS_DISPOSITIVO %}<option {% if d.tipo == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+  <input name="{{ nombre }}__vaso" value="{{ d.vaso or '' }}" placeholder="Vaso (p. ej. AFS)" aria-label="Vaso o localización">
+  <input name="{{ nombre }}__modelo" value="{{ d.modelo or '' }}" placeholder="Marca/modelo" aria-label="Marca o modelo">
+  <input name="{{ nombre }}__diametro" value="{{ d.diametro if d.diametro is defined else '' }}" inputmode="decimal" placeholder="Ø mm" aria-label="Diámetro en mm">
+  <input name="{{ nombre }}__longitud" value="{{ d.longitud if d.longitud is defined else '' }}" inputmode="decimal" placeholder="Longitud mm" aria-label="Longitud en mm">
+  <button type="button" class="quitar-dispositivo" aria-label="Quitar fila">×</button>
+</div>
+{% endmacro %}
+
 {% macro campo(c, datos, errores) %}
 {%- set valor = datos.get(c.nombre) -%}
 {%- set error = errores.get(c.nombre) -%}
 <div class="campo campo-{{ c.tipo }}{% if error %} con-error{% endif %}"
      {% if c.si %}data-si='{{ c.si | tojson }}'{% endif %} data-nombre="{{ c.nombre }}">
-  {% if c.tipo in ('radio', 'multi', 'sino') %}
+  {% if c.tipo == 'dispositivos' %}
+    <fieldset>
+      <legend>{{ c.etiqueta }}{% if c.req %} <span class="req">*</span>{% endif %}</legend>
+      <div class="dispositivos" data-campo="{{ c.nombre }}">
+        <div class="disp-cabecera"><span>Tipo</span><span>Vaso/localización</span><span>Marca/modelo</span><span>Ø mm</span><span>Long. mm</span><span></span></div>
+        {% for d in (valor or []) %}{{ fila_dispositivo(c.nombre, d) }}{% endfor %}
+        <template>{{ fila_dispositivo(c.nombre, {}) }}</template>
+      </div>
+      <button type="button" class="boton pequeno secundario anadir-dispositivo">+ Añadir dispositivo</button>
+    </fieldset>
+  {% elif c.tipo in ('radio', 'multi', 'sino') %}
     <fieldset>
       <legend>{{ c.etiqueta }}{% if c.req %} <span class="req">*</span>{% endif %}</legend>
       <div class="opciones">

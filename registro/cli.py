@@ -11,7 +11,8 @@ from flask.cli import with_appcontext
 from . import modelos
 from .auth import LONGITUD_MINIMA, crear_usuario
 from .db import get_db, init_db
-from .formularios import PROCEDIMIENTOS, campos, formulario_cirugia, formulario_seguimiento, visible
+from .formularios import (PROCEDIMIENTOS, TIPOS_DISPOSITIVO, campos, formulario_cirugia,
+                          formulario_seguimiento, visible)
 from .recordatorios import enviar_recordatorios
 
 PLANTILLA_CONFIG = '''\
@@ -109,6 +110,12 @@ def datos_aleatorios(secciones, rng):
             datos[c["nombre"]] = rng.randint(int(c.get("min", 0)), int(c.get("max", 100)))
         elif tipo == "fecha":
             datos[c["nombre"]] = date.today().isoformat()
+        elif tipo == "dispositivos":
+            datos[c["nombre"]] = [
+                {"tipo": rng.choice(TIPOS_DISPOSITIVO), "diametro": rng.choice([5, 6, 7, 8]),
+                 "longitud": rng.choice([40, 60, 80, 100, 150])}
+                for _ in range(rng.randint(1, 2))
+            ]
         else:
             datos[c["nombre"]] = "Texto de ejemplo"
     return datos
@@ -137,13 +144,26 @@ def demo_command(pacientes):
         fecha = date.today() - timedelta(days=rng.randint(0, 420))
         proc = modelos.crear_procedimiento(paciente_id, tipo, fecha.isoformat(), rng.choice(ids),
                                            datos_aleatorios(formulario_cirugia(tipo), rng), ids[0])
-        for s in modelos.seguimientos_de_procedimiento(proc):
-            if s["fecha_prevista"] <= date.today().isoformat() and rng.random() < 0.6:
-                datos = datos_aleatorios(formulario_seguimiento(tipo), rng)
-                datos["fecha_revision"] = s["fecha_prevista"]
-                modelos.guardar_seguimiento(s["id"], datos, ids[0])
+        _rellenar_seguimientos(proc, tipo, rng, ids[0])
+        # Algunos pacientes con una reintervención enlazada (p. ej., trombosis de un bypass).
+        if tipo in ("bypass", "endo_periferico", "evar") and (date.today() - fecha).days > 120:
+            fecha_reint = fecha + timedelta(days=rng.randint(60, 110))
+            reint_tipo = "endo_periferico" if tipo != "evar" else "evar"
+            reint = modelos.crear_procedimiento(
+                paciente_id, reint_tipo, fecha_reint.isoformat(), rng.choice(ids),
+                datos_aleatorios(formulario_cirugia(reint_tipo, reintervencion=True), rng), ids[0],
+                origen_id=proc, con_seguimiento=rng.random() < 0.5)
+            _rellenar_seguimientos(reint, reint_tipo, rng, ids[0])
     click.echo(f"Demo cargada: {pacientes} pacientes ficticios.")
     click.echo(f"Usuarios: admin@demo.local, cirujana1@demo.local, cirujano2@demo.local · contraseña: {password}")
+
+
+def _rellenar_seguimientos(procedimiento_id, tipo, rng, usuario_id):
+    for s in modelos.seguimientos_de_procedimiento(procedimiento_id):
+        if s["fecha_prevista"] <= date.today().isoformat() and rng.random() < 0.6:
+            datos = datos_aleatorios(formulario_seguimiento(tipo, s["hito"]), rng)
+            datos["fecha_revision"] = s["fecha_prevista"]
+            modelos.guardar_seguimiento(s["id"], datos, usuario_id)
 
 
 def init_app(app):

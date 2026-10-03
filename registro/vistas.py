@@ -8,7 +8,7 @@ from flask import (Blueprint, Response, abort, flash, g, redirect, render_templa
 from . import modelos
 from .auth import admin_requerido, login_requerido
 from .db import auditar, cargar_json, get_db
-from .formularios import (ETIQUETA_HITO, PROCEDIMIENTOS, campos, formulario_cirugia,
+from .formularios import (ETIQUETA_HITO, PROCEDIMIENTOS, TIPOS_DISPOSITIVO, campos, formulario_cirugia,
                           formulario_seguimiento, procesar, valor_legible)
 from .recordatorios import enviar_recordatorios
 from .seguridad import descifrar_nhc
@@ -22,6 +22,7 @@ SEXOS = ["Hombre", "Mujer"]
 def utilidades():
     return {
         "PROCEDIMIENTOS": PROCEDIMIENTOS,
+        "TIPOS_DISPOSITIVO": TIPOS_DISPOSITIVO,
         "ETIQUETA_HITO": ETIQUETA_HITO,
         "hoy": date.today().isoformat(),
         "valor_legible": valor_legible,
@@ -107,8 +108,8 @@ def nuevo_paciente():
 def paciente(paciente_id):
     pac = modelos.obtener_paciente(paciente_id) or abort(404)
     procedimientos = [
-        (p, modelos.seguimientos_de_procedimiento(p["id"]))
-        for p in modelos.procedimientos_de_paciente(paciente_id)
+        (p, nivel, modelos.seguimientos_de_procedimiento(p["id"]))
+        for p, nivel in modelos.arbol_de_paciente(paciente_id)
     ]
     auditar("ver", "paciente", paciente_id)
     get_db().commit()
@@ -118,8 +119,17 @@ def paciente(paciente_id):
 
 # Procedimientos ---------------------------------------------------------------
 
-def _procesar_procedimiento(tipo):
-    secciones = formulario_cirugia(tipo)
+def _origen_valido(paciente_id, origen_id):
+    if not origen_id:
+        return None
+    origen = modelos.obtener_procedimiento(origen_id)
+    if origen is None or origen["paciente_id"] != paciente_id:
+        abort(400, "La intervención de origen no pertenece a este paciente.")
+    return origen
+
+
+def _procesar_procedimiento(tipo, reintervencion=False):
+    secciones = formulario_cirugia(tipo, reintervencion)
     datos, errores = procesar(secciones, request.form)
     fecha = request.form.get("fecha_cirugia", "")
     try:
@@ -137,31 +147,44 @@ def _procesar_procedimiento(tipo):
 @login_requerido
 def nuevo_procedimiento(paciente_id):
     pac = modelos.obtener_paciente(paciente_id) or abort(404)
+    origen = _origen_valido(paciente_id, request.args.get("origen", type=int))
     tipo = request.args.get("tipo")
     if tipo not in PROCEDIMIENTOS:
-        return render_template("elegir_tipo.html", paciente=pac)
-    secciones = formulario_cirugia(tipo)
+        return render_template("elegir_tipo.html", paciente=pac, origen=origen,
+                               previos=modelos.procedimientos_de_paciente(paciente_id))
+    reintervencion = origen is not None
+    secciones = formulario_cirugia(tipo, reintervencion)
     datos, errores = {}, {}
-    fecha, cirujano_id = "", g.usuario["id"]
+    fecha, cirujano_id, con_seguimiento = "", g.usuario["id"], True
     if request.method == "POST":
-        secciones, datos, errores, fecha, cirujano_id = _procesar_procedimiento(tipo)
+        secciones, datos, errores, fecha, cirujano_id = _procesar_procedimiento(tipo, reintervencion)
+        con_seguimiento = not reintervencion or bool(request.form.get("con_seguimiento"))
         if not errores:
-            nuevo = modelos.crear_procedimiento(paciente_id, tipo, fecha, cirujano_id, datos, g.usuario["id"])
-            flash("Intervención guardada. Se han programado los seguimientos a 1, 3, 6 y 12 meses.", "ok")
+            nuevo = modelos.crear_procedimiento(paciente_id, tipo, fecha, cirujano_id, datos, g.usuario["id"],
+                                                origen_id=origen["id"] if origen else None,
+                                                con_seguimiento=con_seguimiento)
+            if con_seguimiento:
+                flash("Intervención guardada. Se han programado los seguimientos a 1, 3, 6 y 12 meses.", "ok")
+            else:
+                flash("Reintervención guardada, sin seguimientos propios. El seguimiento continúa en la "
+                      "intervención original.", "ok")
             return redirect(url_for("main.procedimiento", procedimiento_id=nuevo))
         flash("Revisa los campos marcados.", "error")
     return render_template("procedimiento_form.html", paciente=pac, tipo=tipo, secciones=secciones,
                            datos=datos, errores=errores, fecha=fecha, cirujano_id=cirujano_id,
-                           cirujanos=modelos.usuarios_activos(), editar=False)
+                           cirujanos=modelos.usuarios_activos(), editar=False, origen=origen,
+                           con_seguimiento=con_seguimiento)
 
 
 @bp.route("/procedimientos/<int:procedimiento_id>")
 @login_requerido
 def procedimiento(procedimiento_id):
     proc = modelos.obtener_procedimiento(procedimiento_id) or abort(404)
+    origen = modelos.obtener_procedimiento(proc["procedimiento_origen_id"]) if proc["procedimiento_origen_id"] else None
     return render_template("procedimiento.html", proc=proc, datos=cargar_json(proc["datos"]),
-                           secciones=formulario_cirugia(proc["tipo"]),
-                           seguimientos=modelos.seguimientos_de_procedimiento(procedimiento_id))
+                           secciones=formulario_cirugia(proc["tipo"], origen is not None),
+                           seguimientos=modelos.seguimientos_de_procedimiento(procedimiento_id),
+                           origen=origen, reintervenciones=modelos.reintervenciones_de(procedimiento_id))
 
 
 @bp.route("/procedimientos/<int:procedimiento_id>/editar", methods=("GET", "POST"))
@@ -169,11 +192,12 @@ def procedimiento(procedimiento_id):
 def editar_procedimiento(procedimiento_id):
     proc = modelos.obtener_procedimiento(procedimiento_id) or abort(404)
     tipo = proc["tipo"]
-    secciones = formulario_cirugia(tipo)
+    reintervencion = proc["procedimiento_origen_id"] is not None
+    secciones = formulario_cirugia(tipo, reintervencion)
     datos, errores = cargar_json(proc["datos"]), {}
     fecha, cirujano_id = proc["fecha_cirugia"], proc["cirujano_id"]
     if request.method == "POST":
-        secciones, datos, errores, fecha, cirujano_id = _procesar_procedimiento(tipo)
+        secciones, datos, errores, fecha, cirujano_id = _procesar_procedimiento(tipo, reintervencion)
         if not errores:
             modelos.actualizar_procedimiento(procedimiento_id, fecha, cirujano_id, datos, g.usuario["id"])
             flash("Cambios guardados.", "ok")
@@ -182,7 +206,8 @@ def editar_procedimiento(procedimiento_id):
     return render_template("procedimiento_form.html", paciente=modelos.obtener_paciente(proc["paciente_id"]),
                            tipo=tipo, secciones=secciones, datos=datos, errores=errores, fecha=fecha,
                            cirujano_id=cirujano_id, cirujanos=modelos.usuarios_activos(), editar=True,
-                           proc=proc)
+                           proc=proc, origen=modelos.obtener_procedimiento(proc["procedimiento_origen_id"])
+                           if reintervencion else None)
 
 
 # Seguimientos -----------------------------------------------------------------
@@ -203,7 +228,7 @@ def seguimientos():
 @login_requerido
 def seguimiento(seguimiento_id):
     seg = modelos.obtener_seguimiento(seguimiento_id) or abort(404)
-    secciones = formulario_seguimiento(seg["tipo"])
+    secciones = formulario_seguimiento(seg["tipo"], seg["hito"])
     datos, errores = cargar_json(seg["datos"]), {}
     if request.method == "POST":
         accion = request.form.get("accion")
@@ -224,6 +249,9 @@ def seguimiento(seguimiento_id):
             if not errores:
                 modelos.guardar_seguimiento(seguimiento_id, datos, g.usuario["id"])
                 flash("Seguimiento guardado.", "ok")
+                if datos.get("reintervencion") == "Sí":
+                    flash("Has indicado una reintervención: regístrala con el botón «+ Reintervención» "
+                          "para que quede enlazada a esta intervención.", "aviso")
                 return redirect(url_for("main.procedimiento", procedimiento_id=seg["procedimiento_id"]))
             flash("Revisa los campos marcados.", "error")
     return render_template("seguimiento_form.html", seg=seg, secciones=secciones, datos=datos,
@@ -250,6 +278,19 @@ def exportar():
     return render_template("exportar.html")
 
 
+def mortalidad_30d(fecha_cirugia, datos):
+    """«Sí» si el paciente falleció en los 30 días siguientes a la cirugía; vacío si no consta."""
+    if not datos:
+        return ""
+    if datos.get("estado_vital") != "Fallecido":
+        return "No"
+    try:
+        dias = (date.fromisoformat(datos["fecha_fallecimiento"]) - date.fromisoformat(fecha_cirugia)).days
+    except (KeyError, ValueError):
+        return ""
+    return "Sí" if dias <= 30 else "No"
+
+
 @bp.route("/exportar/<tipo>/<que>.csv")
 @admin_requerido
 def exportar_csv(tipo, que):
@@ -259,20 +300,22 @@ def exportar_csv(tipo, que):
     salida = io.StringIO()
     escritor = csv.writer(salida, delimiter=";")
     if que == "procedimientos":
-        nombres = [c["nombre"] for c in campos(formulario_cirugia(tipo))]
-        escritor.writerow(["codigo", "sexo", "procedimiento_id", "fecha_cirugia", "cirujano"] + nombres)
+        nombres = [c["nombre"] for c in campos(formulario_cirugia(tipo, reintervencion=True))]
+        escritor.writerow(["codigo", "sexo", "procedimiento_id", "procedimiento_origen_id", "con_seguimiento",
+                           "fecha_cirugia", "cirujano"] + nombres)
         filas = db.execute(
             """SELECT p.*, pa.codigo, pa.sexo, u.nombre AS cirujano FROM procedimientos p
                JOIN pacientes pa ON pa.id = p.paciente_id JOIN usuarios u ON u.id = p.cirujano_id
                WHERE p.tipo = ? ORDER BY p.fecha_cirugia""", (tipo,)).fetchall()
         for f in filas:
             d = cargar_json(f["datos"])
-            escritor.writerow([f["codigo"], f["sexo"], f["id"], f["fecha_cirugia"], f["cirujano"]]
+            escritor.writerow([f["codigo"], f["sexo"], f["id"], f["procedimiento_origen_id"] or "",
+                               f["con_seguimiento"], f["fecha_cirugia"], f["cirujano"]]
                               + [valor_legible(d.get(n)) for n in nombres])
     else:
         nombres = [c["nombre"] for c in campos(formulario_seguimiento(tipo))]
         escritor.writerow(["codigo", "procedimiento_id", "fecha_cirugia", "hito", "fecha_prevista",
-                           "estado", "motivo_no_realizable"] + nombres)
+                           "estado", "motivo_no_realizable", "mortalidad_30d"] + nombres)
         filas = db.execute(
             """SELECT s.*, p.fecha_cirugia, pa.codigo FROM seguimientos s
                JOIN procedimientos p ON p.id = s.procedimiento_id
@@ -281,7 +324,8 @@ def exportar_csv(tipo, que):
         for f in filas:
             d = cargar_json(f["datos"])
             escritor.writerow([f["codigo"], f["procedimiento_id"], f["fecha_cirugia"], f["hito"],
-                               f["fecha_prevista"], f["estado"], f["motivo_no_realizable"] or ""]
+                               f["fecha_prevista"], f["estado"], f["motivo_no_realizable"] or "",
+                               mortalidad_30d(f["fecha_cirugia"], d) if f["hito"] == "1m" else ""]
                               + [valor_legible(d.get(n)) for n in nombres])
     auditar("exportar", tipo, None, que)
     db.commit()

@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS procedimientos (
     tipo TEXT NOT NULL,
     fecha_cirugia TEXT NOT NULL,
     datos TEXT NOT NULL DEFAULT '{}',
+    -- Si es una reintervención: intervención previa sobre la que se actúa.
+    procedimiento_origen_id INTEGER REFERENCES procedimientos(id),
+    -- 0 si la reintervención no programa seguimientos propios.
+    con_seguimiento INTEGER NOT NULL DEFAULT 1,
     creado TEXT NOT NULL DEFAULT (datetime('now')),
     creado_por INTEGER REFERENCES usuarios(id),
     modificado TEXT,

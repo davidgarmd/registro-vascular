@@ -60,21 +60,54 @@ def procedimientos_de_paciente(paciente_id):
     return get_db().execute(
         """SELECT p.*, u.nombre AS cirujano FROM procedimientos p
            JOIN usuarios u ON u.id = p.cirujano_id
-           WHERE p.paciente_id = ? ORDER BY p.fecha_cirugia DESC""",
+           WHERE p.paciente_id = ? ORDER BY p.fecha_cirugia DESC, p.id DESC""",
         (paciente_id,),
     ).fetchall()
 
 
-def crear_procedimiento(paciente_id, tipo, fecha_cirugia, cirujano_id, datos, usuario_id):
+def arbol_de_paciente(paciente_id):
+    """Intervenciones del paciente con sus reintervenciones debajo: [(procedimiento, nivel), ...]."""
+    procs = procedimientos_de_paciente(paciente_id)
+    hijos = {}
+    for p in procs:
+        hijos.setdefault(p["procedimiento_origen_id"], []).append(p)
+    for lista in hijos.values():
+        lista.sort(key=lambda p: (p["fecha_cirugia"], p["id"]))
+    raices = sorted(hijos.get(None, []), key=lambda p: (p["fecha_cirugia"], p["id"]), reverse=True)
+    resultado = []
+
+    def recorrer(p, nivel):
+        resultado.append((p, nivel))
+        for h in hijos.get(p["id"], []):
+            recorrer(h, nivel + 1)
+
+    for raiz in raices:
+        recorrer(raiz, 0)
+    return resultado
+
+
+def reintervenciones_de(procedimiento_id):
+    return get_db().execute(
+        """SELECT p.*, u.nombre AS cirujano FROM procedimientos p
+           JOIN usuarios u ON u.id = p.cirujano_id
+           WHERE p.procedimiento_origen_id = ? ORDER BY p.fecha_cirugia""",
+        (procedimiento_id,),
+    ).fetchall()
+
+
+def crear_procedimiento(paciente_id, tipo, fecha_cirugia, cirujano_id, datos, usuario_id,
+                        origen_id=None, con_seguimiento=True):
     db = get_db()
     cur = db.execute(
-        """INSERT INTO procedimientos (paciente_id, cirujano_id, tipo, fecha_cirugia, datos, creado_por)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (paciente_id, cirujano_id, tipo, fecha_cirugia, json.dumps(datos, ensure_ascii=False), usuario_id),
+        """INSERT INTO procedimientos (paciente_id, cirujano_id, tipo, fecha_cirugia, datos, creado_por,
+                                       procedimiento_origen_id, con_seguimiento)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (paciente_id, cirujano_id, tipo, fecha_cirugia, json.dumps(datos, ensure_ascii=False), usuario_id,
+         origen_id, int(con_seguimiento)),
     )
     procedimiento_id = cur.lastrowid
     base = date.fromisoformat(fecha_cirugia)
-    for hito, dias, _ in HITOS:
+    for hito, dias, _ in (HITOS if con_seguimiento else []):
         db.execute(
             "INSERT INTO seguimientos (procedimiento_id, hito, dias, fecha_prevista) VALUES (?, ?, ?, ?)",
             (procedimiento_id, hito, dias, (base + timedelta(days=dias)).isoformat()),

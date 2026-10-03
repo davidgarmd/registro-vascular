@@ -8,10 +8,12 @@
   </div>
   <a class="boton" href="{{ url_for('main.nuevo_procedimiento', paciente_id=paciente.id) }}">+ Intervención</a>
 </div>
-{% for p, segs in procedimientos %}
-  <section class="seccion">
-    <h2><a href="{{ url_for('main.procedimiento', procedimiento_id=p.id) }}">{{ PROCEDIMIENTOS[p.tipo].nombre }}</a> · {{ p.fecha_cirugia }}</h2>
-    <p class="tenue">Responsable: {{ p.cirujano }}</p>
+{% for p, nivel, segs in procedimientos %}
+  <section class="seccion{% if nivel %} reintervencion{% endif %}" style="--nivel: {{ nivel }}">
+    <h2>{% if nivel %}<span class="chip">Reintervención</span> {% endif %}<a href="{{ url_for('main.procedimiento', procedimiento_id=p.id) }}">{{ PROCEDIMIENTOS[p.tipo].nombre }}</a> · {{ p.fecha_cirugia }}</h2>
+    <p class="tenue">Responsable: {{ p.cirujano }}
+      · <a href="{{ url_for('main.nuevo_procedimiento', paciente_id=paciente.id, origen=p.id) }}">+ Reintervención sobre esta</a></p>
+    {% if not segs %}<p class="tenue">Sin seguimientos propios (sigue el de la intervención original).</p>{% endif %}
     <div class="hitos">
       {% for s in segs %}
         <a class="hito" href="{{ url_for('main.seguimiento', seguimiento_id=s.id) }}">

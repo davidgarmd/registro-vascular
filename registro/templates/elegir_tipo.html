@@ -1,12 +1,31 @@
 {% extends 'base.html' %}
 {% block contenido %}
 <h1>Nueva intervención · {{ paciente.codigo }}</h1>
-<p class="tenue">Elige el tipo de procedimiento.</p>
-<div class="tipos">
-  {% for clave, p in PROCEDIMIENTOS.items() %}
-    <a class="tipo" href="{{ url_for('main.nuevo_procedimiento', paciente_id=paciente.id, tipo=clave) }}">
-      <strong>{{ p.nombre }}</strong><span>{{ p.descripcion }}</span>
-    </a>
-  {% endfor %}
-</div>
+<form method="get" class="formulario-tipo">
+  {% if previos %}
+  <section class="seccion">
+    <h2>¿Es una reintervención?</h2>
+    <p class="tenue">Si se opera por una complicación o por fracaso de una intervención ya registrada, enlázala. Así se conserva la historia de cada extremidad o procedimiento y se pueden calcular permeabilidades y libertad de reintervención.</p>
+    <div class="campo">
+      <label for="origen">Intervención de origen</label>
+      <select id="origen" name="origen">
+        <option value="">No: es una intervención nueva (índice)</option>
+        {% for p in previos %}
+          <option value="{{ p.id }}" {% if origen and origen.id == p.id %}selected{% endif %}>
+            Reintervención de: {{ PROCEDIMIENTOS[p.tipo].nombre }} del {{ p.fecha_cirugia }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+  </section>
+  {% endif %}
+  <p class="tenue">Elige el tipo de procedimiento que se ha realizado.</p>
+  <div class="tipos">
+    {% for clave, p in PROCEDIMIENTOS.items() %}
+      <button class="tipo" name="tipo" value="{{ clave }}">
+        <strong>{{ p.nombre }}</strong><span>{{ p.descripcion }}</span>
+      </button>
+    {% endfor %}
+  </div>
+</form>
 {% endblock %}

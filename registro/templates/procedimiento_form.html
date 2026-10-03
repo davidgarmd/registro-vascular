@@ -3,6 +3,9 @@
 {% block contenido %}
 <h1>{{ 'Editar' if editar else 'Nueva' }} intervención · {{ PROCEDIMIENTOS[tipo].nombre }}</h1>
 <p class="tenue">Paciente {{ paciente.codigo }}. Los campos con <span class="req">*</span> son obligatorios; el resto aparece u oculta según lo que elijas.</p>
+{% if origen %}
+<div class="aviso aviso-aviso">Reintervención de: <a href="{{ url_for('main.procedimiento', procedimiento_id=origen.id) }}">{{ PROCEDIMIENTOS[origen.tipo].nombre }} del {{ origen.fecha_cirugia }}</a>. Los seguimientos de la intervención original continúan.</div>
+{% endif %}
 <form method="post" class="formulario" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <section class="seccion">
@@ -23,6 +26,14 @@
     </div>
   </section>
   {{ formulario(secciones, datos, errores) }}
+  {% if origen and not editar %}
+  <section class="seccion">
+    <h2>Seguimiento de la reintervención</h2>
+    <label class="opcion"><input type="checkbox" name="con_seguimiento" value="1" {% if con_seguimiento %}checked{% endif %}>
+      <span>Programar seguimientos propios a 1, 3, 6 y 12 meses</span></label>
+    <p class="tenue">Desmárcalo en reintervenciones menores (p. ej., una angioplastia de una reestenosis) si basta con el seguimiento de la intervención original.</p>
+  </section>
+  {% endif %}
   <div class="acciones">
     <button class="boton">Guardar</button>
     <a class="boton secundario" href="{{ url_for('main.procedimiento', procedimiento_id=proc.id) if editar else url_for('main.paciente', paciente_id=paciente.id) }}">Cancelar</a>
