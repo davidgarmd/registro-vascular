@@ -5,7 +5,7 @@ lista de campos. Un campo es un diccionario con:
 
     nombre     identificador interno (único dentro del formulario)
     etiqueta   texto que ve el usuario
-    tipo       texto | area | numero | fecha | select | radio | multi | sino | dispositivos
+    tipo       texto | area | numero | fecha | select | radio | multi | sino | dispositivos | calculado
                (dispositivos = lista de filas: tipo, vaso, marca/modelo, diámetro y longitud)
     opciones   lista de valores (select, radio, multi)
     req        obligatorio cuando el campo está visible
@@ -15,10 +15,15 @@ lista de campos. Un campo es un diccionario con:
     min, max   límites para campos numéricos
     unidad     texto que se muestra tras un campo numérico
     ayuda      aclaración breve
+    guia       lista de (valor, descripción) que se despliega como «¿Cómo se clasifica?»
+    calculado  campo que se rellena solo: {"entradas": [campo1, campo2], "tabla": {"a|b": valor}}
+               (se usa el primer término de cada respuesta como clave; p. ej. «2 · …» → «2»)
 
 Para añadir o cambiar variables basta con editar este fichero: los datos se
 guardan como JSON, así que no hace falta tocar la base de datos.
 """
+
+from . import escalas as E
 
 SINO = ["Sí", "No"]
 LADO = ["Derecho", "Izquierdo", "Bilateral"]
@@ -69,7 +74,7 @@ COMUN_PREOPERATORIO = [
             "Neoplasia activa", "Ninguno",
         ]),
         C("tabaquismo", "Tabaquismo", "radio", ["Nunca", "Exfumador (> 1 año)", "Fumador activo"]),
-        C("asa", "ASA", "select", ["I", "II", "III", "IV", "V"]),
+        C("asa", "ASA", "select", ["I", "II", "III", "IV", "V"], guia=E.ASA),
         C("antitromboticos_preop", "Tratamiento antitrombótico previo", "multi", ANTITROMBOTICOS),
         C("caracter", "Carácter de la intervención", "radio",
           ["Programada", "Urgente (< 72 h)", "Emergente"], req=True),
@@ -87,6 +92,8 @@ COMUN_INTRAOPERATORIO = S(
     C("exito_tecnico", "Éxito técnico", "sino", req=True),
 )
 
+EXITUS_HOSPITALARIO = "Exitus hospitalario"
+
 COMUN_POSTOPERATORIO = [
     S(
         "Postoperatorio (hasta el alta)",
@@ -100,14 +107,29 @@ COMUN_POSTOPERATORIO = [
         ], req=True),
         C("complicaciones_otra", "Otra complicación (especificar)", si=si("complicaciones", "Otra")),
         C("reintervencion_ingreso", "Reintervención durante el ingreso", "sino"),
+        C("reint_ingreso_fecha", "Fecha de la reintervención", "fecha", si=si("reintervencion_ingreso", "Sí"),
+          req=True),
+        C("reint_ingreso_motivo", "Motivo de la reintervención", "select", [
+            "Hemorragia/hematoma", "Trombosis/oclusión", "Isquemia persistente", "Infección de herida",
+            "Síndrome compartimental", "Isquemia intestinal", "Complicación del acceso", "Endofuga", "Otra",
+        ], si=si("reintervencion_ingreso", "Sí"), req=True),
+        C("reint_ingreso_via", "Vía", "radio", ["Abierta", "Endovascular", "Híbrida"],
+          si=si("reintervencion_ingreso", "Sí"), req=True),
+        C("reint_ingreso_detalle", "Qué se hizo", "area", si=si("reintervencion_ingreso", "Sí"),
+          ayuda="Si es una intervención relevante (p. ej., un nuevo bypass), regístrala además con "
+                "«+ Reintervención» para tener su formulario completo."),
         C("clavien_dindo", "Clavien-Dindo (peor complicación)", "select",
-          ["0 (sin complicaciones)", "I", "II", "IIIa", "IIIb", "IVa", "IVb", "V"]),
+          ["0 (sin complicaciones)", "I", "II", "IIIa", "IIIb", "IVa", "IVb", "V"], guia=E.CLAVIEN_DINDO),
         C("estancia_uci_dias", "Estancia en UCI/REA", "numero", min=0, max=365, unidad="días"),
         C("estancia_dias", "Estancia hospitalaria total", "numero", min=0, max=365, unidad="días"),
         C("destino_alta", "Destino al alta", "select", [
-            "Domicilio", "Centro sociosanitario", "Traslado a otro hospital",
-            "Exitus hospitalario",
+            "Domicilio", "Centro sociosanitario", "Traslado a otro hospital", EXITUS_HOSPITALARIO,
         ]),
+        C("fecha_exitus", "Fecha del exitus", "fecha", si=si("destino_alta", EXITUS_HOSPITALARIO), req=True),
+        C("causa_exitus", "Causa del exitus", "select", [
+            "Relacionada con el procedimiento", "Cardiovascular", "Fallo multiorgánico/sepsis", "Otra causa",
+            "Desconocida",
+        ], si=si("destino_alta", EXITUS_HOSPITALARIO), req=True),
         C("comentarios_cirugia", "Comentarios", "area"),
     ),
 ]
@@ -165,6 +187,22 @@ AMPUTACION_SEGUIMIENTO = C(
     ["No", "Digital", "Transmetatarsiana", "Infracondílea", "Supracondílea"])
 
 
+_CLTI = ["Isquemia crónica: dolor en reposo", "Isquemia crónica: lesión trófica", "Rescate de bypass/stent previo"]
+
+
+def glass():
+    """GLASS: grados femoropoplíteo e infrapoplíteo → estadio calculado (solo en isquemia crónica amenazante)."""
+    cond = si("indicacion", *_CLTI)
+    return [
+        C("glass_fp", "GLASS - Segmento femoropoplíteo", "radio", E.GLASS_FP, si=cond, guia=E.GUIA_GLASS),
+        C("glass_ip", "GLASS - Segmento infrapoplíteo (arteria diana)", "radio", E.GLASS_IP, si=cond),
+        C("glass", "Estadio GLASS", "calculado", si=cond,
+          calculado={"entradas": ["glass_fp", "glass_ip"], "tabla": E.TABLA_GLASS}),
+        C("glass_inframaleolar", "GLASS - Modificador inframaleolar", "radio", E.GLASS_IM, si=cond),
+        C("glass_entrada", "Enfermedad de entrada (aortoilíaca) significativa", "sino", si=cond),
+    ]
+
+
 def material(si=None):
     """Material implantado con medidas + descripción libre del procedimiento endovascular."""
     return [
@@ -183,11 +221,11 @@ INDICACION_PERIFERICA = [
     "Traumatismo", "Rescate de bypass/stent previo", "Otra",
 ]
 WIFI = [
-    C("wifi_w", "WIfI - Herida (W)", "select", ["0", "1", "2", "3"],
+    C("wifi_w", "WIfI - Herida (W)", "select", ["0", "1", "2", "3"], guia=E.WIFI_W,
       si=si("indicacion", "Isquemia crónica: lesión trófica")),
-    C("wifi_i", "WIfI - Isquemia (I)", "select", ["0", "1", "2", "3"],
+    C("wifi_i", "WIfI - Isquemia (I)", "select", ["0", "1", "2", "3"], guia=E.WIFI_I,
       si=si("indicacion", "Isquemia crónica: lesión trófica")),
-    C("wifi_fi", "WIfI - Infección del pie (fI)", "select", ["0", "1", "2", "3"],
+    C("wifi_fi", "WIfI - Infección del pie (fI)", "select", ["0", "1", "2", "3"], guia=E.WIFI_FI,
       si=si("indicacion", "Isquemia crónica: lesión trófica")),
 ]
 SEGUIMIENTO_EXTREMIDAD = [
@@ -201,7 +239,7 @@ SEGUIMIENTO_AORTA_ENDO = [
     C("diametro_saco_mm", "Diámetro máximo del saco", "numero", min=0, max=150, unidad="mm"),
     C("evolucion_saco", "Evolución del saco", "radio",
       ["Regresión ≥ 5 mm", "Estable", "Crecimiento ≥ 5 mm", "No valorable"]),
-    C("endofuga", "Endofuga", "multi", ENDOFUGAS + ["Endotensión (tipo V)", "No valorable"]),
+    C("endofuga", "Endofuga", "multi", ENDOFUGAS + ["Endotensión (tipo V)", "No valorable"], guia=E.ENDOFUGAS),
     C("migracion", "Migración (> 10 mm)", "sino"),
     C("vasos_diana_ocluidos", "Oclusión/estenosis de vasos diana o ramas", "multi", [
         "No aplica", "Ninguna", "Tronco celíaco", "AMS", "Renal derecha", "Renal izquierda",
@@ -246,9 +284,10 @@ procedimiento(
             C("extension", "Extensión", "select", [
                 "Infrarrenal", "Yuxtarrenal", "Pararrenal", "Suprarrenal", "Toracoabdominal",
             ], si=si("indicacion", *_aneurismas)),
-            C("crawford", "Clasificación de Crawford", "select", ["I", "II", "III", "IV", "V"],
+            C("crawford", "Clasificación de Crawford", "select", ["I", "II", "III", "IV", "V"], guia=E.CRAWFORD,
               si=si("extension", "Toracoabdominal")),
             C("tasc_aortoiliaco", "TASC II aortoilíaco", "select", ["A", "B", "C", "D"],
+              guia=E.TASC_AORTOILIACO,
               si=si("indicacion", "Enfermedad oclusiva aortoilíaca")),
             C("rutherford", "Rutherford", "select", RUTHERFORD,
               si=si("indicacion", "Enfermedad oclusiva aortoilíaca")),
@@ -340,7 +379,8 @@ procedimiento(
             C("contraste_ml", "Contraste", "numero", min=0, max=1000, unidad="ml"),
             C("fluoroscopia_min", "Tiempo de fluoroscopia", "numero", min=0, max=600, unidad="min"),
             C("dosis_radiacion", "Dosis (DAP)", "numero", min=0, unidad="Gy·cm²"),
-            C("endofuga_final", "Endofuga en la angiografía final", "multi", ENDOFUGAS, req=True),
+            C("endofuga_final", "Endofuga en la angiografía final", "multi", ENDOFUGAS, req=True,
+              guia=E.ENDOFUGAS),
             *material(),
         ),
     ],
@@ -369,7 +409,7 @@ procedimiento(
             ], si=si("patologia", *_disecciones)),
             C("complicada", "Situación clínica", "radio",
               ["No complicada", "De alto riesgo", "Complicada (rotura/malperfusión)"],
-              si=si("patologia", *_disecciones)),
+              si=si("patologia", *_disecciones), guia=E.DISECCION_TIPO_B),
             C("presentacion", "Presentación", "radio", ["Asintomático", "Sintomático", "Roto"]),
             C("diametro_max_mm", "Diámetro máximo", "numero", min=0, max=150, unidad="mm"),
         ),
@@ -379,7 +419,8 @@ procedimiento(
                 "TEVAR estándar", "TEVAR con rama para subclavia izquierda",
                 "TEVAR con ramas/fenestraciones para troncos supraaórticos", "TEVAR + debranching quirúrgico",
             ], req=True),
-            C("zona_proximal", "Zona de anclaje proximal (Ishimaru)", "select", ["0", "1", "2", "3", "4"], req=True),
+            C("zona_proximal", "Zona de anclaje proximal (Ishimaru)", "select", ["0", "1", "2", "3", "4"],
+              req=True, guia=E.ISHIMARU),
             C("subclavia", "Arteria subclavia izquierda", "select",
               ["No cubierta", "Cubierta sin revascularizar"] + _subclavia_rev, req=True),
             C("extension_distal", "Extensión distal de la cobertura", "select",
@@ -390,7 +431,8 @@ procedimiento(
             C("acceso", "Acceso", "radio", ["Percutáneo", "Quirúrgico abierto", "Conducto ilíaco"], req=True),
             C("contraste_ml", "Contraste", "numero", min=0, max=1000, unidad="ml"),
             C("fluoroscopia_min", "Tiempo de fluoroscopia", "numero", min=0, max=600, unidad="min"),
-            C("endofuga_final", "Endofuga en la angiografía final", "multi", ENDOFUGAS, req=True),
+            C("endofuga_final", "Endofuga en la angiografía final", "multi", ENDOFUGAS, req=True,
+              guia=E.ENDOFUGAS),
             *material(),
         ),
     ],
@@ -417,8 +459,8 @@ procedimiento(
               si=excepto("indicacion", "Isquemia aguda", "Aneurisma poplíteo", "Traumatismo")),
             *WIFI,
             C("rutherford_agudo", "Clasificación de isquemia aguda", "select", ["I", "IIa", "IIb", "III"],
-              si=si("indicacion", "Isquemia aguda")),
-            C("glass", "GLASS", "select", ["I", "II", "III"]),
+              si=si("indicacion", "Isquemia aguda"), guia=E.RUTHERFORD_AGUDA),
+            *glass(),
             C("pie_diabetico", "Pie diabético", "sino"),
             C("redo", "Revascularización previa en esta extremidad", "sino"),
         ),
@@ -475,9 +517,12 @@ procedimiento(
             ], req=True),
             C("tipo_lesion", "Tipo de lesión", "radio", ["Estenosis", "Oclusión", "Ambas"]),
             C("longitud_lesion_mm", "Longitud total de la lesión", "numero", min=0, max=600, unidad="mm"),
-            C("tasc", "TASC II", "select", ["A", "B", "C", "D"]),
-            C("glass", "GLASS", "select", ["I", "II", "III"]),
-            C("calcificacion", "Calcificación (PACSS)", "select", ["0", "1", "2", "3", "4"]),
+            C("tasc_aortoiliaco", "TASC II aortoilíaco", "select", ["A", "B", "C", "D"],
+              si=si("sectores", "Aortoilíaco"), guia=E.TASC_AORTOILIACO),
+            C("tasc_femoropopliteo", "TASC II femoropoplíteo", "select", ["A", "B", "C", "D"],
+              si=si("sectores", "Femoral común", "Femoropoplíteo"), guia=E.TASC_FEMOROPOPLITEO),
+            *glass(),
+            C("calcificacion", "Calcificación (PACSS)", "select", ["0", "1", "2", "3", "4"], guia=E.PACSS),
             C("pie_diabetico", "Pie diabético", "sino"),
         ),
         S(
@@ -665,9 +710,9 @@ procedimiento(
               si=si("sintomatologia", *_sintomaticas)),
             C("lado", "Lado", "radio", ["Derecho", "Izquierdo"], req=True),
             C("estenosis", "Grado de estenosis (NASCET)", "select",
-              ["50-69 %", "70-99 %", "Suboclusión (near-occlusion)", "Reestenosis"], req=True),
+              ["50-69 %", "70-99 %", "Suboclusión (near-occlusion)", "Reestenosis"], req=True, guia=E.NASCET),
             C("contralateral", "Carótida contralateral", "select", ["< 50 %", "50-69 %", "70-99 %", "Ocluida"]),
-            C("rankin_preop", "Rankin modificado previo", "select", ["0", "1", "2", "3", "4", "5"]),
+            C("rankin_preop", "Rankin modificado previo", "select", ["0", "1", "2", "3", "4", "5"], guia=E.RANKIN),
         ),
         S(
             "Técnica",
@@ -705,7 +750,7 @@ procedimiento(
        C("reestenosis", "Reestenosis en el eco-doppler", "select",
          ["< 50 %", "50-69 %", "≥ 70 %", "Oclusión", "No valorada"]),
        C("lesion_nervio", "Lesión de nervio craneal persistente", "sino"),
-       C("rankin", "Rankin modificado", "select", ["0", "1", "2", "3", "4", "5", "6"]))],
+       C("rankin", "Rankin modificado", "select", ["0", "1", "2", "3", "4", "5", "6"], guia=E.RANKIN))],
 )
 
 # Congestión venosa pélvica --------------------------------------------------
@@ -724,7 +769,7 @@ procedimiento(
                 "Varices vulvares/perineales", "Varices atípicas en MMII", "Hematuria",
                 "Síntomas urinarios",
             ]),
-            C("eva_basal", "Dolor pélvico basal (EVA 0-10)", "numero", min=0, max=10),
+            C("eva_basal", "Dolor pélvico basal (EVA 0-10)", "numero", min=0, max=10, guia=E.EVA),
             C("gestaciones", "Número de gestaciones", "numero", min=0, max=20),
             C("pruebas", "Pruebas diagnósticas", "multi", [
                 "Eco-doppler transvaginal", "Eco-doppler abdominal", "AngioTC", "AngioRM",
@@ -746,7 +791,7 @@ procedimiento(
         ),
     ],
     [S("Seguimiento específico",
-       C("eva", "Dolor pélvico actual (EVA 0-10)", "numero", min=0, max=10, req=True),
+       C("eva", "Dolor pélvico actual (EVA 0-10)", "numero", min=0, max=10, req=True, guia=E.EVA),
        C("dispareunia", "Dispareunia", "select", ["No aplica", "Resuelta", "Mejorada", "Igual", "Peor"]),
        C("pgic", "Impresión global de cambio (PGIC)", "select",
          ["Mucho mejor", "Mejor", "Algo mejor", "Igual", "Peor"]),
@@ -764,11 +809,11 @@ procedimiento(
             "Clínica (CEAP)",
             C("lado", "Lado", "radio", LADO, req=True),
             C("ceap_c", "CEAP - Clínica (C)", "select",
-              ["C1", "C2", "C3", "C4a", "C4b", "C4c", "C5", "C6"], req=True),
+              ["C1", "C2", "C3", "C4a", "C4b", "C4c", "C5", "C6"], req=True, guia=E.CEAP_C),
             C("ceap_e", "CEAP - Etiología (E)", "radio", ["Primaria", "Secundaria", "Congénita"]),
             C("ceap_a", "CEAP - Anatomía (A)", "multi", ["Superficial", "Profundo", "Perforantes"]),
             C("ceap_p", "CEAP - Fisiopatología (P)", "radio", ["Reflujo", "Obstrucción", "Ambos"]),
-            C("vcss", "VCSS", "numero", min=0, max=30),
+            C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
             C("recidiva", "Varices recidivadas", "sino"),
         ),
         S(
@@ -790,7 +835,7 @@ procedimiento(
        C("oclusion_eje", "Oclusión del eje tratado", "select",
          ["No aplica", "Oclusión completa", "Recanalización parcial", "Recanalización completa"]),
        C("recurrencia", "Recurrencia", "radio", ["No", "Sí, clínica", "Sí, solo ecográfica"]),
-       C("vcss", "VCSS", "numero", min=0, max=30),
+       C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
        C("complicaciones_venosas", "Complicaciones", "multi", [
            "Ninguna", "TVP", "EHIT/ETIT", "Tromboflebitis superficial", "Parestesias/lesión nerviosa",
            "Hiperpigmentación", "Quemadura cutánea",
@@ -808,9 +853,9 @@ procedimiento(
             "Clínica",
             C("lado", "Lado", "radio", LADO, req=True),
             C("ceap_c", "CEAP - Clínica (C)", "select",
-              ["C0", "C1", "C2", "C3", "C4a", "C4b", "C4c", "C5", "C6"], req=True),
-            C("villalta", "Escala de Villalta", "numero", min=0, max=33),
-            C("vcss", "VCSS", "numero", min=0, max=30),
+              ["C0", "C1", "C2", "C3", "C4a", "C4b", "C4c", "C5", "C6"], req=True, guia=E.CEAP_C),
+            C("villalta", "Escala de Villalta", "numero", min=0, max=33, guia=E.VILLALTA),
+            C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
             C("meses_desde_tvp", "Tiempo desde la TVP", "numero", min=0, max=600, unidad="meses"),
             C("segmentos", "Segmentos afectados", "multi", [
                 "Vena cava inferior", "Ilíaca común", "Ilíaca externa", "Femoral común",
@@ -839,8 +884,8 @@ procedimiento(
            "Permeable (primaria)", "Permeable (primaria asistida)", "Permeable (secundaria)", "Ocluido",
            "No valorada",
        ], req=True),
-       C("villalta", "Escala de Villalta", "numero", min=0, max=33),
-       C("vcss", "VCSS", "numero", min=0, max=30),
+       C("villalta", "Escala de Villalta", "numero", min=0, max=33, guia=E.VILLALTA),
+       C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
        C("ulcera", "Úlcera venosa", "select", ["No aplica", "Cicatrizada", "Abierta", "Recidivada"]),
        C("claudicacion_venosa", "Claudicación venosa", "sino"),
        C("anticoagulacion", "Tratamiento antitrombótico actual", "multi",
@@ -868,7 +913,7 @@ procedimiento(
               si=si("etiologia", "Embólica")),
             C("rutherford_agudo", "Clasificación de Rutherford", "select", [
                 "I - Viable", "IIa - Amenaza marginal", "IIb - Amenaza inmediata", "III - Irreversible",
-            ], req=True),
+            ], req=True, guia=E.RUTHERFORD_AGUDA),
             C("horas_evolucion", "Horas de evolución", "numero", min=0, max=720, unidad="h"),
         ),
         S(
@@ -1100,6 +1145,11 @@ def procesar(secciones, form):
         if not visible(c, datos):
             continue
         nombre, tipo = c["nombre"], c["tipo"]
+        if tipo == "calculado":
+            valor = calcular(c, datos)
+            if valor:
+                datos[nombre] = valor
+            continue
         if tipo == "dispositivos":
             valor, error = _procesar_dispositivos(nombre, form)
             if error:
@@ -1131,6 +1181,17 @@ def procesar(secciones, form):
             continue
         datos[nombre] = valor
     return datos, errores
+
+
+def calcular(campo, datos):
+    regla = campo["calculado"]
+    claves = []
+    for entrada in regla["entradas"]:
+        valor = datos.get(entrada)
+        if not valor:
+            return None
+        claves.append(str(valor).split(" ")[0])
+    return regla["tabla"].get("|".join(claves))
 
 
 COLUMNAS_DISPOSITIVO = ("tipo", "vaso", "modelo", "diametro", "longitud")

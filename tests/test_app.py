@@ -322,3 +322,43 @@ def test_actividad_mensual(app, client, login):
     login("uno@test.es", "contraseña-uno")
     assert client.get("/actividad").status_code == 200
     assert client.get("/actividad/detalle.csv").status_code == 403
+
+
+def test_exitus_hospitalario_cierra_seguimientos_y_cuenta_mortalidad(app, client, login):
+    t = login()
+    with app.app_context():
+        pac = modelos.crear_paciente("55", "Hombre", 1)
+        otro = modelos.crear_procedimiento(pac, "varices", "2026-01-01", 2, {}, 1)
+        fecha = (date.today() - timedelta(days=40)).isoformat()
+        exitus = (date.today() - timedelta(days=30)).isoformat()
+        proc = modelos.crear_procedimiento(pac, "evar", fecha, 2, {
+            "destino_alta": "Exitus hospitalario", "fecha_exitus": exitus, "causa_exitus": "Cardiovascular"}, 1)
+        estados = {s["estado"] for p in (otro, proc) for s in modelos.seguimientos_de_procedimiento(p)}
+        assert estados == {"no_realizable"}
+        assert enviar_recordatorios(date.today()) == {}
+    texto = client.get("/exportar/evar/procedimientos.csv").get_data(as_text=True)
+    fila = next(l for l in texto.splitlines() if l.startswith("RV-"))
+    assert f";{fecha};Dra. Uno;Sí;Sí;" in fila
+
+
+def test_fallecimiento_en_seguimiento_cierra_el_resto(app, client, login):
+    t = login()
+    _procedimiento(app, dias_atras=100)
+    client.post("/seguimientos/1", data={
+        "csrf_token": t, "accion": "guardar", "fecha_revision": date.today().isoformat(),
+        "tipo_revision": "Telefónica", "estado_vital": "Fallecido", "fecha_fallecimiento": date.today().isoformat(),
+        "causa_muerte": "Otra causa", "reintervencion": "No", "reingreso_30d": "No",
+    })
+    with app.app_context():
+        assert [s["estado"] for s in modelos.seguimientos_de_procedimiento(1)] == [
+            "completado", "no_realizable", "no_realizable", "no_realizable"]
+
+
+def test_guias_visibles_en_el_formulario(client, login):
+    login()
+    client.post("/pacientes/nuevo", data={"nhc": "1", "nhc2": "1", "sexo": "Mujer",
+                                          "csrf_token": __import__("tests.conftest", fromlist=["token"]).token(client, "/perfil")})
+    html = client.get("/pacientes/1/procedimientos/nuevo?tipo=bypass").get_data(as_text=True)
+    assert html.count("¿Cómo se clasifica?") >= 6        # ASA, WIfI ×3, Rutherford agudo, GLASS, Clavien-Dindo
+    assert "IIIb" in html and "anestesia general" in html
+    assert "data-calculado" in html

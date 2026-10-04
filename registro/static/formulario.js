@@ -28,6 +28,17 @@
     return true;
   }
 
+  // Campos calculados (p. ej., estadio GLASS a partir de sus dos grados).
+  function calcular() {
+    form.querySelectorAll("output[data-calculado]").forEach((out) => {
+      const regla = JSON.parse(out.dataset.calculado);
+      const claves = regla.entradas.map((n) => (valores(n)[0] || "").split(" ")[0]);
+      const resultado = claves.every(Boolean) ? regla.tabla[claves.join("|")] : null;
+      out.textContent = resultado || "Se calcula al completar los campos anteriores";
+      out.classList.toggle("listo", Boolean(resultado));
+    });
+  }
+
   function actualizar() {
     // En orden: una condición solo depende de campos anteriores.
     campos.forEach((div) => {
@@ -39,6 +50,7 @@
       div.hidden = !ver;
       div.querySelectorAll("input, select, textarea").forEach((el) => (el.disabled = !ver));
     });
+    calcular();
   }
 
   // Filas de dispositivos (material con medidas).

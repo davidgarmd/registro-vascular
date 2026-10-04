@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from flask import current_app
 
 from .db import auditar, get_db
-from .formularios import HITOS
+from .formularios import EXITUS_HOSPITALARIO, HITOS
 from .seguridad import cifrar_nhc, nhc_hmac
 
 
@@ -113,6 +113,8 @@ def crear_procedimiento(paciente_id, tipo, fecha_cirugia, cirujano_id, datos, us
             (procedimiento_id, hito, dias, (base + timedelta(days=dias)).isoformat()),
         )
     auditar("crear", "procedimiento", procedimiento_id, tipo, usuario_id=usuario_id)
+    if datos.get("destino_alta") == EXITUS_HOSPITALARIO:
+        cerrar_seguimientos_por_fallecimiento(paciente_id, datos.get("fecha_exitus"), usuario_id)
     db.commit()
     return procedimiento_id
 
@@ -132,6 +134,10 @@ def actualizar_procedimiento(procedimiento_id, fecha_cirugia, cirujano_id, datos
         (fecha_cirugia, procedimiento_id),
     )
     auditar("editar", "procedimiento", procedimiento_id, usuario_id=usuario_id)
+    if datos.get("destino_alta") == EXITUS_HOSPITALARIO:
+        paciente_id = db.execute("SELECT paciente_id FROM procedimientos WHERE id = ?",
+                                 (procedimiento_id,)).fetchone()["paciente_id"]
+        cerrar_seguimientos_por_fallecimiento(paciente_id, datos.get("fecha_exitus"), usuario_id)
     db.commit()
 
 
@@ -162,7 +168,28 @@ def guardar_seguimiento(seguimiento_id, datos, usuario_id):
         (json.dumps(datos, ensure_ascii=False), ahora(), usuario_id, seguimiento_id),
     )
     auditar("completar", "seguimiento", seguimiento_id, usuario_id=usuario_id)
+    if datos.get("estado_vital") == "Fallecido":
+        fila = db.execute(
+            """SELECT p.paciente_id FROM seguimientos s JOIN procedimientos p ON p.id = s.procedimiento_id
+               WHERE s.id = ?""", (seguimiento_id,)).fetchone()
+        cerrar_seguimientos_por_fallecimiento(fila["paciente_id"], datos.get("fecha_fallecimiento"), usuario_id)
     db.commit()
+
+
+def cerrar_seguimientos_por_fallecimiento(paciente_id, fecha, usuario_id):
+    """Marca como no realizables los seguimientos pendientes de un paciente fallecido (sin más avisos)."""
+    db = get_db()
+    motivo = f"Paciente fallecido{' el ' + fecha if fecha else ''}"
+    cur = db.execute(
+        """UPDATE seguimientos SET estado = 'no_realizable', motivo_no_realizable = ?, completado = ?,
+           completado_por = ?
+           WHERE estado = 'pendiente'
+             AND procedimiento_id IN (SELECT id FROM procedimientos WHERE paciente_id = ?)""",
+        (motivo, ahora(), usuario_id, paciente_id),
+    )
+    if cur.rowcount:
+        auditar("cerrar_por_fallecimiento", "paciente", paciente_id, f"{cur.rowcount} seguimientos",
+                usuario_id=usuario_id)
 
 
 def marcar_no_realizable(seguimiento_id, motivo, usuario_id):

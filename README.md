@@ -25,6 +25,13 @@ y **recordatorios por correo** a cada cirujano a 1, 3, 6 y 12 meses de la cirug�
   unida a la original (motivo y relación). En la ficha del paciente se ven en árbol, y puede
   tener sus propios seguimientos o no. El seguimiento de la intervención original continúa,
   lo que permite calcular la permeabilidad primaria y secundaria y la libertad de reintervención.
+- **Guías de escalas.** Cada escala (ASA, Clavien-Dindo, WIfI, TASC II, GLASS, PACSS, Rutherford
+  agudo, Crawford, Ishimaru, endofugas, Rankin, CEAP, VCSS, Villalta, NASCET, EVA) tiene un
+  desplegable «¿Cómo se clasifica?». El **estadio GLASS se calcula solo** a partir de los grados
+  femoropoplíteo e infrapoplíteo. Los textos están en [`registro/escalas.py`](registro/escalas.py).
+- **Exitus hospitalario** con fecha y causa: cuenta en la mortalidad a 30 días y cierra los
+  seguimientos pendientes del paciente (sin más recordatorios). Lo mismo ocurre si en un
+  seguimiento consta que el paciente ha fallecido.
 - **Resultados a 30 días** en el seguimiento al mes: reingreso y su motivo. La mortalidad a
   30 días se calcula sola en la exportación (columna `mortalidad_30d`).
 - **Formularios dinámicos.** Los campos aparecen u ocultan según lo elegido. Por ejemplo,

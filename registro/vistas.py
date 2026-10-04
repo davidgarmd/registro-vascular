@@ -8,7 +8,7 @@ from flask import (Blueprint, Response, abort, flash, g, redirect, render_templa
 from . import actividad, modelos
 from .auth import admin_requerido, login_requerido
 from .db import auditar, cargar_json, get_db
-from .formularios import (ETIQUETA_HITO, PROCEDIMIENTOS, TIPOS_DISPOSITIVO, campos, formulario_cirugia,
+from .formularios import (ETIQUETA_HITO, EXITUS_HOSPITALARIO, PROCEDIMIENTOS, TIPOS_DISPOSITIVO, campos, formulario_cirugia,
                           formulario_seguimiento, procesar, valor_legible)
 from .recordatorios import enviar_recordatorios
 from .seguridad import descifrar_nhc
@@ -143,6 +143,12 @@ def _procesar_procedimiento(tipo, reintervencion=False):
     return secciones, datos, errores, fecha, cirujano_id
 
 
+def _aviso_reintervencion_ingreso(datos):
+    if datos.get("reintervencion_ingreso") == "Sí":
+        flash("Has registrado una reintervención durante el ingreso. Si quieres su formulario completo "
+              "(técnica, material…), añádela con «+ Reintervención».", "aviso")
+
+
 @bp.route("/pacientes/<int:paciente_id>/procedimientos/nuevo", methods=("GET", "POST"))
 @login_requerido
 def nuevo_procedimiento(paciente_id):
@@ -163,11 +169,15 @@ def nuevo_procedimiento(paciente_id):
             nuevo = modelos.crear_procedimiento(paciente_id, tipo, fecha, cirujano_id, datos, g.usuario["id"],
                                                 origen_id=origen["id"] if origen else None,
                                                 con_seguimiento=con_seguimiento)
-            if con_seguimiento:
+            if datos.get("destino_alta") == EXITUS_HOSPITALARIO:
+                flash("Intervención guardada. Al constar el exitus hospitalario, los seguimientos pendientes "
+                      "se han cerrado y no se enviarán recordatorios.", "ok")
+            elif con_seguimiento:
                 flash("Intervención guardada. Se han programado los seguimientos a 1, 3, 6 y 12 meses.", "ok")
             else:
                 flash("Reintervención guardada, sin seguimientos propios. El seguimiento continúa en la "
                       "intervención original.", "ok")
+            _aviso_reintervencion_ingreso(datos)
             return redirect(url_for("main.procedimiento", procedimiento_id=nuevo))
         flash("Revisa los campos marcados.", "error")
     return render_template("procedimiento_form.html", paciente=pac, tipo=tipo, secciones=secciones,
@@ -201,6 +211,7 @@ def editar_procedimiento(procedimiento_id):
         if not errores:
             modelos.actualizar_procedimiento(procedimiento_id, fecha, cirujano_id, datos, g.usuario["id"])
             flash("Cambios guardados.", "ok")
+            _aviso_reintervencion_ingreso(datos)
             return redirect(url_for("main.procedimiento", procedimiento_id=procedimiento_id))
         flash("Revisa los campos marcados.", "error")
     return render_template("procedimiento_form.html", paciente=modelos.obtener_paciente(proc["paciente_id"]),
@@ -341,15 +352,26 @@ def actividad_csv(formato):
                     headers={"Content-Disposition": f"attachment; filename=actividad_{formato}_{desde}_{hasta}.csv"})
 
 
-def mortalidad_30d(fecha_cirugia, datos):
-    """«Sí» si el paciente falleció en los 30 días siguientes a la cirugía; vacío si no consta."""
-    if not datos:
-        return ""
-    if datos.get("estado_vital") != "Fallecido":
-        return "No"
+def _dias_desde(fecha_cirugia, fecha):
     try:
-        dias = (date.fromisoformat(datos["fecha_fallecimiento"]) - date.fromisoformat(fecha_cirugia)).days
-    except (KeyError, ValueError):
+        return (date.fromisoformat(fecha) - date.fromisoformat(fecha_cirugia)).days
+    except (TypeError, ValueError):
+        return None
+
+
+def mortalidad_30d(fecha_cirugia, datos_cirugia, datos_1m):
+    """«Sí» si el paciente falleció en los 30 días siguientes a la cirugía (durante el ingreso o
+    según el seguimiento al mes); «No» si consta vivo; vacío si todavía no se sabe."""
+    if datos_cirugia.get("destino_alta") == EXITUS_HOSPITALARIO:
+        dias = _dias_desde(fecha_cirugia, datos_cirugia.get("fecha_exitus"))
+        if dias is not None:
+            return "Sí" if dias <= 30 else "No"
+    if not datos_1m:
+        return ""
+    if datos_1m.get("estado_vital") != "Fallecido":
+        return "No"
+    dias = _dias_desde(fecha_cirugia, datos_1m.get("fecha_fallecimiento"))
+    if dias is None:
         return ""
     return "Sí" if dias <= 30 else "No"
 
@@ -365,22 +387,26 @@ def exportar_csv(tipo, que):
     if que == "procedimientos":
         nombres = [c["nombre"] for c in campos(formulario_cirugia(tipo, reintervencion=True))]
         escritor.writerow(["codigo", "sexo", "procedimiento_id", "procedimiento_origen_id", "con_seguimiento",
-                           "fecha_cirugia", "cirujano"] + nombres)
+                           "fecha_cirugia", "cirujano", "mortalidad_hospitalaria", "mortalidad_30d"] + nombres)
         filas = db.execute(
-            """SELECT p.*, pa.codigo, pa.sexo, u.nombre AS cirujano FROM procedimientos p
+            """SELECT p.*, pa.codigo, pa.sexo, u.nombre AS cirujano, s.datos AS datos_1m
+               FROM procedimientos p
                JOIN pacientes pa ON pa.id = p.paciente_id JOIN usuarios u ON u.id = p.cirujano_id
+               LEFT JOIN seguimientos s ON s.procedimiento_id = p.id AND s.hito = '1m' AND s.estado = 'completado'
                WHERE p.tipo = ? ORDER BY p.fecha_cirugia""", (tipo,)).fetchall()
         for f in filas:
             d = cargar_json(f["datos"])
+            exitus = "Sí" if d.get("destino_alta") == EXITUS_HOSPITALARIO else ("No" if d.get("destino_alta") else "")
             escritor.writerow([f["codigo"], f["sexo"], f["id"], f["procedimiento_origen_id"] or "",
-                               f["con_seguimiento"], f["fecha_cirugia"], f["cirujano"]]
+                               f["con_seguimiento"], f["fecha_cirugia"], f["cirujano"], exitus,
+                               mortalidad_30d(f["fecha_cirugia"], d, cargar_json(f["datos_1m"]))]
                               + [valor_legible(d.get(n)) for n in nombres])
     else:
         nombres = [c["nombre"] for c in campos(formulario_seguimiento(tipo))]
         escritor.writerow(["codigo", "procedimiento_id", "fecha_cirugia", "hito", "fecha_prevista",
                            "estado", "motivo_no_realizable", "mortalidad_30d"] + nombres)
         filas = db.execute(
-            """SELECT s.*, p.fecha_cirugia, pa.codigo FROM seguimientos s
+            """SELECT s.*, p.fecha_cirugia, p.datos AS datos_cirugia, pa.codigo FROM seguimientos s
                JOIN procedimientos p ON p.id = s.procedimiento_id
                JOIN pacientes pa ON pa.id = p.paciente_id
                WHERE p.tipo = ? ORDER BY p.id, s.dias""", (tipo,)).fetchall()
@@ -388,7 +414,8 @@ def exportar_csv(tipo, que):
             d = cargar_json(f["datos"])
             escritor.writerow([f["codigo"], f["procedimiento_id"], f["fecha_cirugia"], f["hito"],
                                f["fecha_prevista"], f["estado"], f["motivo_no_realizable"] or "",
-                               mortalidad_30d(f["fecha_cirugia"], d) if f["hito"] == "1m" else ""]
+                               mortalidad_30d(f["fecha_cirugia"], cargar_json(f["datos_cirugia"]), d)
+                               if f["hito"] == "1m" else ""]
                               + [valor_legible(d.get(n)) for n in nombres])
     auditar("exportar", tipo, None, que)
     db.commit()

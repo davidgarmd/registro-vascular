@@ -17,7 +17,10 @@
 {%- set error = errores.get(c.nombre) -%}
 <div class="campo campo-{{ c.tipo }}{% if error %} con-error{% endif %}"
      {% if c.si %}data-si='{{ c.si | tojson }}'{% endif %} data-nombre="{{ c.nombre }}">
-  {% if c.tipo == 'dispositivos' %}
+  {% if c.tipo == 'calculado' %}
+    <span class="etiqueta">{{ c.etiqueta }}</span>
+    <output class="calculado" data-calculado='{{ c.calculado | tojson }}'>{{ valor or 'Se calcula al completar los campos anteriores' }}</output>
+  {% elif c.tipo == 'dispositivos' %}
     <fieldset>
       <legend>{{ c.etiqueta }}{% if c.req %} <span class="req">*</span>{% endif %}</legend>
       <div class="dispositivos" data-campo="{{ c.nombre }}">
@@ -62,6 +65,12 @@
     {% endif %}
   {% endif %}
   {% if c.ayuda %}<small class="ayuda">{{ c.ayuda }}</small>{% endif %}
+  {% if c.guia %}
+    <details class="guia">
+      <summary>¿Cómo se clasifica?</summary>
+      <dl>{% for clave, texto in c.guia %}<dt>{{ clave }}</dt><dd>{{ texto }}</dd>{% endfor %}</dl>
+    </details>
+  {% endif %}
   {% if error %}<small class="error">{{ error }}</small>{% endif %}
 </div>
 {% endmacro %}

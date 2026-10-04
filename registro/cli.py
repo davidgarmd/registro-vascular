@@ -11,7 +11,7 @@ from flask.cli import with_appcontext
 from . import modelos
 from .auth import LONGITUD_MINIMA, crear_usuario
 from .db import get_db, init_db
-from .formularios import (PROCEDIMIENTOS, TIPOS_DISPOSITIVO, campos, formulario_cirugia,
+from .formularios import (PROCEDIMIENTOS, TIPOS_DISPOSITIVO, calcular, campos, formulario_cirugia,
                           formulario_seguimiento, visible)
 from .recordatorios import enviar_recordatorios
 
@@ -99,10 +99,14 @@ def datos_aleatorios(secciones, rng):
     """Rellena un formulario con valores válidos al azar (solo para la demo)."""
     datos = {}
     for c in campos(secciones):
-        if not visible(c, datos) or (not c["req"] and rng.random() < 0.3):
+        if not visible(c, datos) or (not c["req"] and c["tipo"] != "calculado" and rng.random() < 0.3):
             continue
         tipo = c["tipo"]
-        if tipo in ("select", "radio", "sino"):
+        if tipo == "calculado":
+            valor = calcular(c, datos)
+            if valor:
+                datos[c["nombre"]] = valor
+        elif tipo in ("select", "radio", "sino"):
             datos[c["nombre"]] = rng.choice(c["opciones"])
         elif tipo == "multi":
             datos[c["nombre"]] = rng.sample(c["opciones"], k=min(len(c["opciones"]), rng.randint(1, 2)))
