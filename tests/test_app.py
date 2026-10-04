@@ -93,7 +93,7 @@ def test_recordatorios(app):
         assert enviar_recordatorios(hoy + timedelta(days=6)) == {}      # ni antes de 7 días
         assert enviar_recordatorios(hoy + timedelta(days=7)) == {"uno@test.es": 2}
 
-        modelos.marcar_no_realizable(1, "Trasladado a otro centro", 1)
+        modelos.marcar_no_realizable(1, "No acudió a esta revisión", 1)
         assert enviar_recordatorios(hoy + timedelta(days=14)) == {"uno@test.es": 1}
         assert enviar_recordatorios(hoy + timedelta(days=21)) == {"uno@test.es": 1}
         # Máximo 4 avisos por seguimiento.
@@ -362,3 +362,29 @@ def test_guias_visibles_en_el_formulario(client, login):
     assert html.count("¿Cómo se clasifica?") >= 6        # ASA, WIfI ×3, Rutherford agudo, GLASS, Clavien-Dindo
     assert "IIIb" in html and "anestesia general" in html
     assert "data-calculado" in html
+
+
+def test_paciente_perdido_cierra_todos_sus_seguimientos(app, client, login):
+    t = login()
+    _procedimiento(app, dias_atras=100, cirujano_id=2)
+    _procedimiento(app, dias_atras=40, cirujano_id=2)          # mismo paciente, otra intervención
+    # Solo este: los demás siguen pendientes.
+    client.post("/seguimientos/1", data={"csrf_token": t, "accion": "no_realizable",
+                                         "motivo": "No acudió a esta revisión", "alcance": "este"})
+    with app.app_context():
+        pendientes = [s["id"] for s in modelos.seguimientos_pendientes()]
+        assert 1 not in pendientes and 2 in pendientes and 5 in pendientes
+    # «Otro» exige detalle.
+    client.post("/seguimientos/2", data={"csrf_token": t, "accion": "no_realizable", "motivo": "Otro",
+                                         "alcance": "paciente"})
+    with app.app_context():
+        assert len(modelos.seguimientos_pendientes()) == 7
+    # Trasladado: se cierran todos los del paciente y no hay más recordatorios.
+    r = client.post("/seguimientos/2", data={"csrf_token": t, "accion": "no_realizable",
+                                             "motivo": "Trasladado a otro centro", "detalle": "Hospital X",
+                                             "alcance": "paciente"}, follow_redirects=True)
+    assert "7 seguimientos cerrados" in r.get_data(as_text=True)
+    with app.app_context():
+        assert modelos.seguimientos_pendientes() == []
+        assert enviar_recordatorios(date.today() + timedelta(days=400)) == {}
+        assert modelos.obtener_seguimiento(4)["motivo_no_realizable"] == "Trasladado a otro centro: Hospital X"

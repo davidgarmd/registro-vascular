@@ -16,6 +16,11 @@ from .seguridad import descifrar_nhc
 bp = Blueprint("main", __name__)
 
 SEXOS = ["Hombre", "Mujer"]
+# Los primeros suelen ser definitivos: se propone cerrar todos los seguimientos del paciente.
+MOTIVOS_NO_REALIZABLE = [
+    "Paciente perdido/no localizable", "Trasladado a otro centro", "Rechaza el seguimiento",
+    "No acudió a esta revisión", "Otro",
+]
 
 
 @bp.app_context_processor
@@ -244,12 +249,18 @@ def seguimiento(seguimiento_id):
     if request.method == "POST":
         accion = request.form.get("accion")
         if accion == "no_realizable":
-            motivo = request.form.get("motivo", "").strip()
-            if not motivo:
+            motivo = request.form.get("motivo", "")
+            detalle = request.form.get("detalle", "").strip()
+            alcance = request.form.get("alcance", "este")
+            if motivo not in MOTIVOS_NO_REALIZABLE or alcance not in modelos.ALCANCES_NO_REALIZABLE:
                 flash("Indica el motivo por el que no se puede realizar.", "error")
+            elif motivo == "Otro" and not detalle:
+                flash("Describe el motivo.", "error")
             else:
-                modelos.marcar_no_realizable(seguimiento_id, motivo, g.usuario["id"])
-                flash("Seguimiento marcado como no realizable.", "ok")
+                texto = f"{motivo}: {detalle}" if detalle else motivo
+                n = modelos.marcar_no_realizable(seguimiento_id, texto, g.usuario["id"], alcance)
+                flash(f"{n} seguimiento{'s' if n != 1 else ''} cerrado{'s' if n != 1 else ''}; "
+                      "no se enviarán más recordatorios por ellos.", "ok")
                 return redirect(url_for("main.procedimiento", procedimiento_id=seg["procedimiento_id"]))
         elif accion == "reabrir":
             modelos.reabrir_seguimiento(seguimiento_id, g.usuario["id"])
@@ -266,7 +277,7 @@ def seguimiento(seguimiento_id):
                 return redirect(url_for("main.procedimiento", procedimiento_id=seg["procedimiento_id"]))
             flash("Revisa los campos marcados.", "error")
     return render_template("seguimiento_form.html", seg=seg, secciones=secciones, datos=datos,
-                           errores=errores)
+                           errores=errores, motivos=MOTIVOS_NO_REALIZABLE)
 
 
 # Administración ---------------------------------------------------------------

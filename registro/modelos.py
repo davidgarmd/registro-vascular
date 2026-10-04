@@ -192,15 +192,35 @@ def cerrar_seguimientos_por_fallecimiento(paciente_id, fecha, usuario_id):
                 usuario_id=usuario_id)
 
 
-def marcar_no_realizable(seguimiento_id, motivo, usuario_id):
+ALCANCES_NO_REALIZABLE = ("este", "intervencion", "paciente")
+
+
+def marcar_no_realizable(seguimiento_id, motivo, usuario_id, alcance="este"):
+    """Cierra un seguimiento sin datos (y deja de avisar por él).
+
+    alcance: «este» (solo este seguimiento), «intervencion» (este y los siguientes de la misma
+    intervención) o «paciente» (todos los seguimientos pendientes del paciente: perdido, trasladado…).
+    Devuelve cuántos seguimientos se han cerrado.
+    """
     db = get_db()
-    db.execute(
-        """UPDATE seguimientos SET estado = 'no_realizable', motivo_no_realizable = ?,
-           completado = ?, completado_por = ? WHERE id = ?""",
-        (motivo, ahora(), usuario_id, seguimiento_id),
+    seg = db.execute(
+        """SELECT s.id, s.dias, s.procedimiento_id, p.paciente_id FROM seguimientos s
+           JOIN procedimientos p ON p.id = s.procedimiento_id WHERE s.id = ?""", (seguimiento_id,)).fetchone()
+    filtro, params = "id = ?", [seguimiento_id]
+    if alcance == "intervencion":
+        filtro, params = "procedimiento_id = ? AND dias >= ?", [seg["procedimiento_id"], seg["dias"]]
+    elif alcance == "paciente":
+        filtro = "procedimiento_id IN (SELECT id FROM procedimientos WHERE paciente_id = ?)"
+        params = [seg["paciente_id"]]
+    cur = db.execute(
+        f"""UPDATE seguimientos SET estado = 'no_realizable', motivo_no_realizable = ?,
+            completado = ?, completado_por = ? WHERE estado = 'pendiente' AND ({filtro})""",
+        [motivo, ahora(), usuario_id] + params,
     )
-    auditar("no_realizable", "seguimiento", seguimiento_id, motivo, usuario_id=usuario_id)
+    auditar("no_realizable", "seguimiento", seguimiento_id, f"{motivo} ({alcance}: {cur.rowcount})",
+            usuario_id=usuario_id)
     db.commit()
+    return cur.rowcount
 
 
 def reabrir_seguimiento(seguimiento_id, usuario_id):

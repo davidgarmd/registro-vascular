@@ -21,12 +21,33 @@
 </form>
 {% if seg.estado == 'pendiente' %}
 <details class="seccion">
-  <summary>No se puede realizar este seguimiento (paciente perdido, trasladado…)</summary>
-  <form method="post">
+  <summary>No se puede hacer este seguimiento (paciente perdido, trasladado, no acudió…)</summary>
+  <form method="post" class="no-realizable">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="campo"><label for="motivo">Motivo</label><input id="motivo" name="motivo" required></div>
-    <button class="boton secundario" name="accion" value="no_realizable">Marcar como no realizable</button>
+    <div class="campo"><label for="motivo">Motivo</label>
+      <select id="motivo" name="motivo" required>
+        <option value="">—</option>
+        {% for m in motivos %}<option>{{ m }}</option>{% endfor %}
+      </select></div>
+    <div class="campo"><label for="detalle">Detalle (opcional; obligatorio si eliges «Otro»)</label>
+      <input id="detalle" name="detalle" placeholder="p. ej., trasladado al Hospital de…"></div>
+    <fieldset class="campo"><legend>¿Qué seguimientos se cierran?</legend>
+      <div class="opciones">
+        <label class="opcion"><input type="radio" name="alcance" value="este" checked><span>Solo este ({{ ETIQUETA_HITO[seg.hito] }})</span></label>
+        <label class="opcion"><input type="radio" name="alcance" value="intervencion"><span>Este y los siguientes de esta intervención</span></label>
+        <label class="opcion"><input type="radio" name="alcance" value="paciente"><span>Todos los pendientes del paciente</span></label>
+      </div>
+      <small class="ayuda">Si el paciente está perdido, trasladado o rechaza el seguimiento, cierra todos para que no lleguen más recordatorios. Siempre se puede reabrir un seguimiento.</small>
+    </fieldset>
+    <button class="boton secundario" name="accion" value="no_realizable">Cerrar sin datos</button>
   </form>
+  <script>
+    // Los motivos definitivos proponen cerrar todos los seguimientos del paciente.
+    document.getElementById("motivo").addEventListener("change", (e) => {
+      const definitivo = e.target.selectedIndex >= 1 && e.target.selectedIndex <= 3;
+      document.querySelector(`input[name=alcance][value=${definitivo ? "paciente" : "este"}]`).checked = true;
+    });
+  </script>
 </details>
 {% endif %}
 {% endif %}
