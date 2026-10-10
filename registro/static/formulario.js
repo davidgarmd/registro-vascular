@@ -28,14 +28,59 @@
     return true;
   }
 
-  // Campos calculados (p. ej., estadio GLASS a partir de sus dos grados).
+  // Campos calculados (estadios WIfI y GLASS, totales de Villalta y VCSS, código SVP).
+  // Misma lógica que formularios.calcular en el servidor.
+  const clave = (v) => (v || "").split(" ")[0];
+  function codigoSvp(val) {
+    const s = val("svp_s"), v = val("svp_v"), seg = val("svp_anatomia"), et = val("svp_etiologia")[0];
+    if (!s.length || !v.length) return null;
+    let codigo = "S" + s.map((x) => x.slice(1)).join(",") + " V" + v.map((x) => x.slice(1)).join(",");
+    if (seg.length && et && seg.every((x) => val("svp_h_" + x).length)) {
+      codigo += " P " + seg.map((x) => `${x},${val("svp_h_" + x)[0]},${et}`).join("; ");
+    }
+    return codigo;
+  }
   function calcular() {
+    const calculados = {};
+    const val = (n) => (n in calculados ? [String(calculados[n])] : valores(n));
     form.querySelectorAll("output[data-calculado]").forEach((out) => {
       const regla = JSON.parse(out.dataset.calculado);
-      const claves = regla.entradas.map((n) => (valores(n)[0] || "").split(" ")[0]);
-      const resultado = claves.every(Boolean) ? regla.tabla[claves.join("|")] : null;
-      out.textContent = resultado || "Se calcula al completar los campos anteriores";
-      out.classList.toggle("listo", Boolean(resultado));
+      const campo = out.closest(".campo");
+      let resultado = null;
+      if (!campo.hidden) {
+        if (regla.suma) {
+          const claves = regla.suma.map((n) => clave(val(n)[0]));
+          if (claves.every((k) => /^\d+$/.test(k))) resultado = claves.reduce((a, k) => a + Number(k), 0);
+        } else if (regla.svp) {
+          resultado = codigoSvp(val);
+        } else {
+          const claves = regla.entradas.map((n) => clave(val(n)[0]));
+          if (claves.every(Boolean)) {
+            if (regla.rangos) {
+              const f = regla.forzar;
+              if (f && val(f.campo)[0] === f.valor) resultado = f.texto;
+              else {
+                const fila = regla.rangos.find(([hasta]) => Number(claves[0]) <= hasta);
+                resultado = fila ? fila[1] : null;
+              }
+            } else {
+              resultado = regla.tabla[claves.join("|")] || null;
+            }
+          }
+        }
+      }
+      if (resultado !== null) calculados[campo.dataset.nombre] = resultado;
+      out.textContent = resultado !== null ? resultado : "Se calcula al completar los campos anteriores";
+      out.classList.toggle("listo", resultado !== null);
+    });
+  }
+
+  // Texto completo de la opción elegida en las escalas (el desplegable cerrado lo recorta).
+  function descripciones() {
+    form.querySelectorAll("small.desc-elegida").forEach((el) => {
+      const sel = el.previousElementSibling;
+      const texto = sel.selectedIndex > 0 ? sel.options[sel.selectedIndex].textContent : "";
+      el.textContent = texto.includes(" · ") && texto.length > 40 ? texto : "";
     });
   }
 
@@ -51,6 +96,7 @@
       div.querySelectorAll("input, select, textarea").forEach((el) => (el.disabled = !ver));
     });
     calcular();
+    descripciones();
   }
 
   // Filas de dispositivos (material con medidas).

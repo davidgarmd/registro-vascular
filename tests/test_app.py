@@ -216,7 +216,7 @@ def test_reintervencion_enlazada(app, client, login):
         "csrf_token": t, "fecha_cirugia": "2026-06-01", "cirujano_id": "1", "edad": "70",
         "caracter": "Urgente (< 72 h)", "reint_motivo": "Trombosis/oclusión",
         "reint_relacion": "Sobre el mismo procedimiento/lesión diana", "extremidad": "Miembro inferior derecho",
-        "etiologia": "Trombosis de bypass", "rutherford_agudo": "IIa - Amenaza marginal", "abordaje": "Femoral",
+        "etiologia": "Trombosis de bypass", "rutherford_agudo": "IIa", "abordaje": "Femoral",
         "embolectomia": "Sí", "direccion_embolectomia": "Distal", "territorios": "Poplítea",
         "tromboaspiracion": "Sí", "anestesia": "General", "exito_tecnico": "Sí", "complicaciones": "Ninguna",
     }
@@ -354,13 +354,14 @@ def test_fallecimiento_en_seguimiento_cierra_el_resto(app, client, login):
             "completado", "no_realizable", "no_realizable", "no_realizable"]
 
 
-def test_guias_visibles_en_el_formulario(client, login):
+def test_descripciones_de_escalas_en_las_opciones(client, login):
     login()
     client.post("/pacientes/nuevo", data={"nhc": "1", "nhc2": "1", "sexo": "Mujer",
                                           "csrf_token": __import__("tests.conftest", fromlist=["token"]).token(client, "/perfil")})
     html = client.get("/pacientes/1/procedimientos/nuevo?tipo=bypass").get_data(as_text=True)
-    assert html.count("¿Cómo se clasifica?") >= 6        # ASA, WIfI ×3, Rutherford agudo, GLASS, Clavien-Dindo
-    assert "IIIb" in html and "anestesia general" in html
+    assert "¿Cómo se clasifica?" not in html              # la descripción va en cada opción
+    assert "IIIb · Intervención quirúrgica/endoscópica/radiológica CON anestesia general" in html
+    assert "Estadio clínico WIfI" in html
     assert "data-calculado" in html
 
 

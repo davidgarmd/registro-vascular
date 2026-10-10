@@ -146,16 +146,13 @@ table.actividad tr.nivel-1 td { color: var(--tenue); }
 table.actividad td.total { font-weight: 700; }
 table.actividad tr.pie th, table.actividad tr.pie td { border-top: 2px solid var(--borde); font-weight: 700; }
 
-/* Guías de escalas y campos calculados */
-.guia { margin-top: 4px; font-size: 0.88rem; }
-.guia summary { color: var(--primario); font-weight: 600; cursor: pointer; width: fit-content; }
-.guia dl { display: grid; grid-template-columns: minmax(70px, max-content) 1fr; gap: 6px 12px; margin: 8px 0 0;
-  padding: 10px 12px; background: var(--fondo); border: 1px solid var(--borde); border-radius: 8px; }
-.guia dt { font-weight: 700; }
-.guia dd { margin: 0; color: var(--texto); }
+/* Descripciones de escalas y campos calculados */
+small.desc-elegida { display: block; margin-top: 4px; color: var(--tenue); font-size: 0.85rem; }
+small.desc-elegida:empty { display: none; }
+.opcion small.desc { color: var(--tenue); font-size: 0.85rem; }
+.campo { min-width: 0; }
+select { min-width: 0; max-width: 100%; text-overflow: ellipsis; }
 .etiqueta { font-weight: 600; font-size: 0.93rem; }
 output.calculado { display: block; padding: 8px 10px; border: 1px dashed var(--borde); border-radius: 6px; color: var(--tenue); }
 output.calculado.listo { border-style: solid; border-color: var(--primario); color: var(--texto); font-weight: 700; }
 .campo-calculado { grid-column: 1 / -1; }
-@media (max-width: 600px) { .guia dl { grid-template-columns: 1fr; } .guia dd { margin-bottom: 6px; } }
-.campo:has(details.guia[open]) { grid-column: 1 / -1; }

@@ -15,9 +15,15 @@ lista de campos. Un campo es un diccionario con:
     min, max   límites para campos numéricos
     unidad     texto que se muestra tras un campo numérico
     ayuda      aclaración breve
-    guia       lista de (valor, descripción) que se despliega como «¿Cómo se clasifica?»
-    calculado  campo que se rellena solo: {"entradas": [campo1, campo2], "tabla": {"a|b": valor}}
-               (se usa el primer término de cada respuesta como clave; p. ej. «2 · …» → «2»)
+    guia       lista de (valor, descripción) de una escala; la descripción se muestra junto a
+               cada opción («IIIb · Requiere…») y se guarda solo el valor (queda en «descripciones»)
+    calculado  campo que se rellena solo a partir de otros (se usa el primer término de cada
+               respuesta; p. ej. «2 · …» → «2»). Reglas:
+                 {"entradas": [a, b], "tabla": {"a|b": valor}}      búsqueda en tabla
+                 {"suma": [a, b, …]}                                suma de puntos
+                 {"entradas": [total], "rangos": [[hasta, texto]…],
+                  "forzar": {"campo": x, "valor": v, "texto": t}}   interpretación de un total
+                 {"svp": True}                                      código SVP
 
 Para añadir o cambiar variables basta con editar este fichero: los datos se
 guardan como JSON, así que no hace falta tocar la base de datos.
@@ -37,6 +43,10 @@ def C(nombre, etiqueta, tipo="texto", opciones=None, req=False, si=None, **extra
         campo["opciones"] = list(opciones)
     if si is not None:
         campo["si"] = si
+    guia = dict(extra.pop("guia", None) or [])
+    if guia and opciones:
+        descripciones = {op: guia.get(op) or guia.get(op.split(" ")[0]) for op in campo["opciones"]}
+        campo["descripciones"] = {op: d for op, d in descripciones.items() if d}
     campo.update(extra)
     return campo
 
@@ -194,7 +204,7 @@ def glass():
     """GLASS: grados femoropoplíteo e infrapoplíteo → estadio calculado (solo en isquemia crónica amenazante)."""
     cond = si("indicacion", *_CLTI)
     return [
-        C("glass_fp", "GLASS - Segmento femoropoplíteo", "radio", E.GLASS_FP, si=cond, guia=E.GUIA_GLASS),
+        C("glass_fp", "GLASS - Segmento femoropoplíteo", "radio", E.GLASS_FP, si=cond, ayuda=E.AYUDA_GLASS),
         C("glass_ip", "GLASS - Segmento infrapoplíteo (arteria diana)", "radio", E.GLASS_IP, si=cond),
         C("glass", "Estadio GLASS", "calculado", si=cond,
           calculado={"entradas": ["glass_fp", "glass_ip"], "tabla": E.TABLA_GLASS}),
@@ -220,13 +230,14 @@ INDICACION_PERIFERICA = [
     "Isquemia crónica: lesión trófica", "Isquemia aguda", "Aneurisma poplíteo",
     "Traumatismo", "Rescate de bypass/stent previo", "Otra",
 ]
+_WIFI_SI = si("indicacion", "Isquemia crónica: dolor en reposo", "Isquemia crónica: lesión trófica")
 WIFI = [
-    C("wifi_w", "WIfI - Herida (W)", "select", ["0", "1", "2", "3"], guia=E.WIFI_W,
-      si=si("indicacion", "Isquemia crónica: lesión trófica")),
-    C("wifi_i", "WIfI - Isquemia (I)", "select", ["0", "1", "2", "3"], guia=E.WIFI_I,
-      si=si("indicacion", "Isquemia crónica: lesión trófica")),
-    C("wifi_fi", "WIfI - Infección del pie (fI)", "select", ["0", "1", "2", "3"], guia=E.WIFI_FI,
-      si=si("indicacion", "Isquemia crónica: lesión trófica")),
+    C("wifi_w", "WIfI - Herida (W)", "select", ["0", "1", "2", "3"], guia=E.WIFI_W, si=_WIFI_SI),
+    C("wifi_i", "WIfI - Isquemia (I)", "select", ["0", "1", "2", "3"], guia=E.WIFI_I, si=_WIFI_SI),
+    C("wifi_fi", "WIfI - Infección del pie (fI)", "select", ["0", "1", "2", "3"], guia=E.WIFI_FI, si=_WIFI_SI),
+    C("wifi", "Estadio clínico WIfI", "calculado", si=_WIFI_SI,
+      calculado={"entradas": ["wifi_w", "wifi_i", "wifi_fi"], "tabla": E.TABLA_WIFI},
+      ayuda="Riesgo de amputación al año. El estadio 5 (pie no salvable) es un juicio clínico."),
 ]
 SEGUIMIENTO_EXTREMIDAD = [
     C("rutherford_actual", "Rutherford actual", "select", RUTHERFORD),
@@ -252,6 +263,45 @@ SEGUIMIENTO_AORTA_ENDO = [
 # ---------------------------------------------------------------------------
 # Procedimientos
 # ---------------------------------------------------------------------------
+
+def villalta():
+    """Escala de Villalta: 11 elementos + úlcera → total (0-33) y gravedad calculados."""
+    items = [C(f"villalta_{k}", texto, "select", [v for v, _ in E.VILLALTA_INTENSIDAD],
+               guia=E.VILLALTA_INTENSIDAD) for k, texto in E.VILLALTA_ITEMS]
+    return [
+        *items,
+        C("villalta_ulcera", "Úlcera venosa", "sino"),
+        C("villalta", "Villalta (puntos)", "calculado", calculado={"suma": [c["nombre"] for c in items]}),
+        C("villalta_grado", "Gravedad del síndrome postrombótico", "calculado",
+          calculado={"entradas": ["villalta"], "rangos": E.VILLALTA_GRADOS,
+                     "forzar": {"campo": "villalta_ulcera", "valor": "Sí",
+                                "texto": E.VILLALTA_GRAVE_POR_ULCERA}}),
+    ]
+
+
+def vcss():
+    """VCSS revisado: 10 elementos de 0 a 3 → total calculado (0-30)."""
+    items = [C(f"vcss_{k}", texto, "select", [v for v, _ in niveles], guia=niveles)
+             for k, texto, niveles in E.VCSS_ITEMS]
+    return [*items, C("vcss", "VCSS (puntos)", "calculado", calculado={"suma": [c["nombre"] for c in items]})]
+
+
+def svp():
+    """Clasificación SVP de los trastornos venosos pélvicos → código calculado."""
+    anatomia = [v for v, _ in E.SVP_ANATOMIA]
+    return [
+        C("svp_s", "SVP - Síntomas (S)", "multi", [v for v, _ in E.SVP_S], guia=E.SVP_S),
+        C("svp_v", "SVP - Varices (V)", "multi", [v for v, _ in E.SVP_V], guia=E.SVP_V),
+        C("svp_anatomia", "SVP - Segmentos venosos afectados (P, anatomía)", "multi", anatomia,
+          guia=E.SVP_ANATOMIA),
+        *[C(f"svp_h_{seg}", f"Hemodinámica en {seg} ({desc.lower()})", "radio",
+            [v for v, _ in E.SVP_HEMODINAMICA], guia=E.SVP_HEMODINAMICA, si=si("svp_anatomia", seg))
+          for seg, desc in E.SVP_ANATOMIA],
+        C("svp_etiologia", "SVP - Etiología (P)", "radio", [v for v, _ in E.SVP_ETIOLOGIA],
+          guia=E.SVP_ETIOLOGIA),
+        C("svp", "Código SVP", "calculado", calculado={"svp": True}),
+    ]
+
 
 PROCEDIMIENTOS = {}
 
@@ -710,7 +760,7 @@ procedimiento(
               si=si("sintomatologia", *_sintomaticas)),
             C("lado", "Lado", "radio", ["Derecho", "Izquierdo"], req=True),
             C("estenosis", "Grado de estenosis (NASCET)", "select",
-              ["50-69 %", "70-99 %", "Suboclusión (near-occlusion)", "Reestenosis"], req=True, guia=E.NASCET),
+              ["50-69 %", "70-99 %", "Suboclusión (near-occlusion)", "Reestenosis"], req=True, ayuda=E.AYUDA_NASCET),
             C("contralateral", "Carótida contralateral", "select", ["< 50 %", "50-69 %", "70-99 %", "Ocluida"]),
             C("rankin_preop", "Rankin modificado previo", "select", ["0", "1", "2", "3", "4", "5"], guia=E.RANKIN),
         ),
@@ -769,7 +819,7 @@ procedimiento(
                 "Varices vulvares/perineales", "Varices atípicas en MMII", "Hematuria",
                 "Síntomas urinarios",
             ]),
-            C("eva_basal", "Dolor pélvico basal (EVA 0-10)", "numero", min=0, max=10, guia=E.EVA),
+            C("eva_basal", "Dolor pélvico basal (EVA 0-10)", "numero", min=0, max=10, ayuda=E.AYUDA_EVA),
             C("gestaciones", "Número de gestaciones", "numero", min=0, max=20),
             C("pruebas", "Pruebas diagnósticas", "multi", [
                 "Eco-doppler transvaginal", "Eco-doppler abdominal", "AngioTC", "AngioRM",
@@ -787,11 +837,14 @@ procedimiento(
                 "Coils", "Plug", "Espuma esclerosante", "Cianoacrilato", "Stent venoso",
                 "Transposición de vena renal izquierda", "Otra",
             ], req=True),
+            C("jalaie", "Clasificación de Jalaie (obstrucción venosa iliofemoral)", "select",
+              [v for v, _ in E.JALAIE], guia=E.JALAIE, si=si("tecnica", "Stent venoso")),
             *material(),
         ),
+        S("Clasificación SVP", *svp()),
     ],
     [S("Seguimiento específico",
-       C("eva", "Dolor pélvico actual (EVA 0-10)", "numero", min=0, max=10, req=True, guia=E.EVA),
+       C("eva", "Dolor pélvico actual (EVA 0-10)", "numero", min=0, max=10, req=True, ayuda=E.AYUDA_EVA),
        C("dispareunia", "Dispareunia", "select", ["No aplica", "Resuelta", "Mejorada", "Igual", "Peor"]),
        C("pgic", "Impresión global de cambio (PGIC)", "select",
          ["Mucho mejor", "Mejor", "Algo mejor", "Igual", "Peor"]),
@@ -813,9 +866,9 @@ procedimiento(
             C("ceap_e", "CEAP - Etiología (E)", "radio", ["Primaria", "Secundaria", "Congénita"]),
             C("ceap_a", "CEAP - Anatomía (A)", "multi", ["Superficial", "Profundo", "Perforantes"]),
             C("ceap_p", "CEAP - Fisiopatología (P)", "radio", ["Reflujo", "Obstrucción", "Ambos"]),
-            C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
             C("recidiva", "Varices recidivadas", "sino"),
         ),
+        S("VCSS (pierna tratada)", *vcss()),
         S(
             "Técnica",
             C("ejes", "Ejes tratados", "multi", [
@@ -835,13 +888,13 @@ procedimiento(
        C("oclusion_eje", "Oclusión del eje tratado", "select",
          ["No aplica", "Oclusión completa", "Recanalización parcial", "Recanalización completa"]),
        C("recurrencia", "Recurrencia", "radio", ["No", "Sí, clínica", "Sí, solo ecográfica"]),
-       C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
        C("complicaciones_venosas", "Complicaciones", "multi", [
            "Ninguna", "TVP", "EHIT/ETIT", "Tromboflebitis superficial", "Parestesias/lesión nerviosa",
            "Hiperpigmentación", "Quemadura cutánea",
        ]),
        C("ulcera", "Úlcera venosa", "select", ["No aplica", "Cicatrizada", "Abierta", "Recidivada"]),
-       C("satisfaccion", "Satisfacción del paciente (0-10)", "numero", min=0, max=10))],
+       C("satisfaccion", "Satisfacción del paciente (0-10)", "numero", min=0, max=10)),
+     S("VCSS (pierna tratada)", *vcss())],
 )
 
 # Síndrome postrombótico ------------------------------------------------------
@@ -854,14 +907,14 @@ procedimiento(
             C("lado", "Lado", "radio", LADO, req=True),
             C("ceap_c", "CEAP - Clínica (C)", "select",
               ["C0", "C1", "C2", "C3", "C4a", "C4b", "C4c", "C5", "C6"], req=True, guia=E.CEAP_C),
-            C("villalta", "Escala de Villalta", "numero", min=0, max=33, guia=E.VILLALTA),
-            C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
             C("meses_desde_tvp", "Tiempo desde la TVP", "numero", min=0, max=600, unidad="meses"),
             C("segmentos", "Segmentos afectados", "multi", [
                 "Vena cava inferior", "Ilíaca común", "Ilíaca externa", "Femoral común",
                 "Femoral/femoral profunda", "Poplítea",
             ], req=True),
             C("tipo_lesion", "Lesión", "radio", ["Oclusión", "Estenosis", "Ambas"]),
+            C("jalaie", "Clasificación de Jalaie (obstrucción venosa iliofemoral)", "select",
+              [v for v, _ in E.JALAIE], guia=E.JALAIE),
             C("pruebas", "Pruebas diagnósticas", "multi",
               ["Eco-doppler", "Flebo-TC", "Flebo-RM", "Flebografía", "IVUS"]),
         ),
@@ -878,18 +931,21 @@ procedimiento(
             C("anticoagulacion_post", "Tratamiento antitrombótico al alta", "multi",
               ["HBPM", "Anticoagulante oral directo", "Antagonista de la vitamina K", "Antiagregante"]),
         ),
+        S("Escala de Villalta (pierna tratada)", *villalta()),
+        S("VCSS (pierna tratada)", *vcss()),
+        S("Clasificación SVP", *svp()),
     ],
     [S("Seguimiento específico",
        C("permeabilidad", "Permeabilidad del stent", "radio", [
            "Permeable (primaria)", "Permeable (primaria asistida)", "Permeable (secundaria)", "Ocluido",
            "No valorada",
        ], req=True),
-       C("villalta", "Escala de Villalta", "numero", min=0, max=33, guia=E.VILLALTA),
-       C("vcss", "VCSS", "numero", min=0, max=30, guia=E.VCSS),
        C("ulcera", "Úlcera venosa", "select", ["No aplica", "Cicatrizada", "Abierta", "Recidivada"]),
        C("claudicacion_venosa", "Claudicación venosa", "sino"),
        C("anticoagulacion", "Tratamiento antitrombótico actual", "multi",
-         ["Ninguno", "HBPM", "Anticoagulante oral directo", "Antagonista de la vitamina K", "Antiagregante"]))],
+         ["Ninguno", "HBPM", "Anticoagulante oral directo", "Antagonista de la vitamina K", "Antiagregante"])),
+     S("Escala de Villalta (pierna tratada)", *villalta()),
+     S("VCSS (pierna tratada)", *vcss())],
 )
 
 # Isquemia aguda / embolectomía ----------------------------------------------
@@ -911,9 +967,7 @@ procedimiento(
             C("origen_embolia", "Origen de la embolia", "select",
               ["Fibrilación auricular", "Otra cardiopatía", "Aneurisma proximal", "Desconocido"],
               si=si("etiologia", "Embólica")),
-            C("rutherford_agudo", "Clasificación de Rutherford", "select", [
-                "I - Viable", "IIa - Amenaza marginal", "IIb - Amenaza inmediata", "III - Irreversible",
-            ], req=True, guia=E.RUTHERFORD_AGUDA),
+            C("rutherford_agudo", "Clasificación de Rutherford", "select", ["I", "IIa", "IIb", "III"], req=True, guia=E.RUTHERFORD_AGUDA),
             C("horas_evolucion", "Horas de evolución", "numero", min=0, max=720, unidad="h"),
         ),
         S(
@@ -962,6 +1016,9 @@ procedimiento(
                 "Fístula arteriovenosa", "Espasmo/compresión",
             ], req=True),
             C("vaso", "Vaso lesionado (opcional)"),
+            C("grado_esvs", "Grado ESVS de la lesión vascular", "select",
+              [v for v, _ in E.GRADO_ESVS_TRAUMA], guia=E.GRADO_ESVS_TRAUMA,
+              ayuda="Si hay varias lesiones, la más grave."),
             C("lesiones_asociadas", "Lesiones asociadas", "multi", [
                 "Ninguna", "Fractura/luxación", "Lesión venosa", "Lesión nerviosa", "Lesión visceral",
                 "Traumatismo craneoencefálico",
@@ -1183,15 +1240,40 @@ def procesar(secciones, form):
     return datos, errores
 
 
+def _clave(valor):
+    return str(valor).split(" ")[0] if valor not in (None, "", []) else ""
+
+
 def calcular(campo, datos):
+    """Valor de un campo calculado (o None si faltan datos). Misma lógica en formulario.js."""
     regla = campo["calculado"]
-    claves = []
-    for entrada in regla["entradas"]:
-        valor = datos.get(entrada)
-        if not valor:
-            return None
-        claves.append(str(valor).split(" ")[0])
+    if "suma" in regla:
+        claves = [_clave(datos.get(n)) for n in regla["suma"]]
+        return sum(int(k) for k in claves) if all(k.isdigit() for k in claves) else None
+    if "svp" in regla:
+        return codigo_svp(datos)
+    claves = [_clave(datos.get(n)) for n in regla["entradas"]]
+    if not all(claves):
+        return None
+    if "rangos" in regla:
+        forzar = regla.get("forzar")
+        if forzar and datos.get(forzar["campo"]) == forzar["valor"]:
+            return forzar["texto"]
+        total = float(claves[0])
+        return next((texto for hasta, texto in regla["rangos"] if total <= hasta), None)
     return regla["tabla"].get("|".join(claves))
+
+
+def codigo_svp(datos):
+    """«S2,3a V2 P LGV,R,NT; LIIV,R,NT» a partir de los campos svp_*."""
+    s, v, segmentos = datos.get("svp_s") or [], datos.get("svp_v") or [], datos.get("svp_anatomia") or []
+    etiologia = datos.get("svp_etiologia")
+    if not s or not v:
+        return None
+    codigo = "S" + ",".join(x[1:] for x in s) + " V" + ",".join(x[1:] for x in v)
+    if segmentos and etiologia and all(datos.get(f"svp_h_{seg}") for seg in segmentos):
+        codigo += " P " + "; ".join(f"{seg},{datos[f'svp_h_{seg}']},{etiologia}" for seg in segmentos)
+    return codigo
 
 
 COLUMNAS_DISPOSITIVO = ("tipo", "vaso", "modelo", "diametro", "longitud")
@@ -1235,7 +1317,14 @@ def dispositivo_legible(d):
     return " ".join(p for p in partes if p)
 
 
-def valor_legible(valor):
+def valor_legible(valor, campo=None):
+    """Texto de un valor guardado; si el campo es una escala, añade la descripción de la opción."""
+    desc = (campo or {}).get("descripciones", {})
+
+    def texto(v):
+        if isinstance(v, dict):
+            return dispositivo_legible(v)
+        return f"{v} · {desc[v]}" if v in desc else str(v)
     if isinstance(valor, list):
-        return " | ".join(dispositivo_legible(v) if isinstance(v, dict) else str(v) for v in valor)
-    return "" if valor is None else str(valor)
+        return " | ".join(texto(v) for v in valor)
+    return "" if valor is None else texto(valor)

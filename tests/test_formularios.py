@@ -1,6 +1,6 @@
 from werkzeug.datastructures import MultiDict
 
-from registro.formularios import (PROCEDIMIENTOS, campos, formulario_cirugia, formulario_seguimiento,
+from registro.formularios import (PROCEDIMIENTOS, calcular, campos, formulario_cirugia, formulario_seguimiento,
                                   procesar)
 
 TIPOS_VALIDOS = {"texto", "area", "numero", "fecha", "select", "radio", "multi", "sino", "dispositivos", "calculado"}
@@ -28,10 +28,10 @@ def test_esquemas_coherentes():
                 assert padre is not None, f"{nombre_form}: {c['nombre']} depende de un campo posterior o inexistente"
                 referidos = cond.get("valores", []) + cond.get("excepto", [])
                 assert set(referidos) <= set(padre["opciones"]), f"{nombre_form}: {c['nombre']} usa valores inexistentes"
-            for entrada in c.get("calculado", {}).get("entradas", []):
+            regla = c.get("calculado", {})
+            for entrada in regla.get("entradas", []) + regla.get("suma", []):
                 assert entrada in vistos, f"{nombre_form}: {c['nombre']} se calcula con un campo posterior"
-            for clave, texto in c.get("guia", []):
-                assert clave and texto, f"{nombre_form}: guía incompleta en {c['nombre']}"
+            assert set(c.get("descripciones", {})) <= set(c.get("opciones", [])), (nombre_form, c["nombre"])
             vistos[c["nombre"]] = c
 
 
@@ -60,9 +60,9 @@ def test_campos_ocultos_se_descartan_y_obligatorios_visibles_se_exigen():
 
 def test_numeros_fuera_de_rango_y_opciones_invalidas():
     secciones = formulario_cirugia("varices")
-    datos, errores = procesar(secciones, MultiDict({"edad": "200", "ceap_c": "C9", "vcss": "3,0"}))
+    datos, errores = procesar(secciones, MultiDict({"edad": "200", "ceap_c": "C9", "diametro_vena_mm": "7,5"}))
     assert "edad" in errores and errores["ceap_c"] == "Opción no válida."
-    assert datos["vcss"] == 3
+    assert datos["diametro_vena_mm"] == 7.5
 
 
 def test_excepto():
@@ -112,3 +112,60 @@ def test_reintervencion_y_exitus_durante_el_ingreso():
     datos, errores = procesar(secciones, MultiDict({**base, "reintervencion_ingreso": "No", "destino_alta": "Domicilio",
                                                     "fecha_exitus": "2026-01-01"}))
     assert not errores and "fecha_exitus" not in datos
+
+
+def _campo(tipo, nombre, seguimiento=False):
+    secciones = formulario_seguimiento(tipo) if seguimiento else formulario_cirugia(tipo)
+    return next(c for c in campos(secciones) if c["nombre"] == nombre)
+
+
+def test_escalas_con_descripcion_en_cada_opcion():
+    asa = _campo("bypass", "asa")
+    assert asa["opciones"] == ["I", "II", "III", "IV", "V"]
+    assert asa["descripciones"]["III"].startswith("Enfermedad sistémica grave")
+    assert "IIIb" in _campo("bypass", "clavien_dindo")["descripciones"]
+    assert _campo("tevar", "zona_proximal")["descripciones"]["2"].startswith("Entre carótida")
+    assert set(_campo("trauma", "grado_esvs")["opciones"]) == {"1", "2", "3", "X"}
+    assert "4a" in _campo("sindrome_postrombotico", "jalaie")["opciones"]
+
+
+def test_wifi_se_calcula():
+    wifi = _campo("bypass", "wifi")
+    assert calcular(wifi, {"wifi_w": "0", "wifi_i": "0", "wifi_fi": "0"}).startswith("Estadio 1")
+    assert calcular(wifi, {"wifi_w": "1", "wifi_i": "1", "wifi_fi": "0"}).startswith("Estadio 2")
+    assert calcular(wifi, {"wifi_w": "2", "wifi_i": "1", "wifi_fi": "0"}).startswith("Estadio 3")
+    assert calcular(wifi, {"wifi_w": "3", "wifi_i": "1", "wifi_fi": "0"}).startswith("Estadio 4")
+    assert calcular(wifi, {"wifi_w": "3", "wifi_i": "1"}) is None
+
+
+def test_villalta_y_vcss_se_calculan():
+    secciones = formulario_cirugia("sindrome_postrombotico")
+    form = {"lado": "Izquierdo", "ceap_c": "C3", "segmentos": "Ilíaca común", "acceso": "Femoral",
+            "tecnicas": "Stent venoso dedicado"}
+    nombres = [c["nombre"] for c in campos(secciones)]
+    for n in nombres:
+        if n.startswith("villalta_") and n not in ("villalta_ulcera", "villalta_grado"):
+            form[n] = "1"                                   # 11 elementos × 1 = 11 → moderado
+        if n.startswith("vcss_"):
+            form[n] = "2"                                   # 10 × 2 = 20
+    form["villalta_ulcera"] = "No"
+    datos, _ = procesar(secciones, MultiDict(form))      # faltan campos comunes: da igual aquí
+    assert datos["villalta"] == 11 and datos["villalta_grado"] == "Moderado"
+    assert datos["vcss"] == 20
+    form["villalta_ulcera"] = "Sí"
+    datos, _ = procesar(secciones, MultiDict(form))
+    assert datos["villalta_grado"] == "Grave (úlcera venosa)"
+    del form["vcss_dolor"]                                  # incompleto: no se calcula
+    datos, _ = procesar(secciones, MultiDict(form))
+    assert "vcss" not in datos
+
+
+def test_codigo_svp():
+    secciones = formulario_cirugia("congestion_pelvica")
+    form = MultiDict([("diagnostico", "Compresión ilíaca (May-Thurner)"), ("venas_tratadas", "Ilíaca común izquierda"),
+                      ("tecnica", "Stent venoso"), ("svp_s", "S2"), ("svp_s", "S3c"), ("svp_v", "V2"),
+                      ("svp_anatomia", "LCIV"), ("svp_anatomia", "LIIV"), ("svp_h_LCIV", "O"),
+                      ("svp_h_LIIV", "R"), ("svp_etiologia", "NT"), ("svp_h_RGV", "R")])
+    datos, _ = procesar(secciones, form)
+    assert datos["svp"] == "S2,3c V2 P LCIV,O,NT; LIIV,R,NT"
+    assert "svp_h_RGV" not in datos                         # segmento no marcado: se descarta

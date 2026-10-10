@@ -25,10 +25,14 @@ y **recordatorios por correo** a cada cirujano a 1, 3, 6 y 12 meses de la cirug�
   unida a la original (motivo y relación). En la ficha del paciente se ven en árbol, y puede
   tener sus propios seguimientos o no. El seguimiento de la intervención original continúa,
   lo que permite calcular la permeabilidad primaria y secundaria y la libertad de reintervención.
-- **Guías de escalas.** Cada escala (ASA, Clavien-Dindo, WIfI, TASC II, GLASS, PACSS, Rutherford
-  agudo, Crawford, Ishimaru, endofugas, Rankin, CEAP, VCSS, Villalta, NASCET, EVA) tiene un
-  desplegable «¿Cómo se clasifica?». El **estadio GLASS se calcula solo** a partir de los grados
-  femoropoplíteo e infrapoplíteo. Los textos están en [`registro/escalas.py`](registro/escalas.py).
+- **Escalas con descripción en cada opción.** ASA, Clavien-Dindo, WIfI, TASC II, PACSS, Rutherford
+  agudo, Crawford, Ishimaru, endofugas, Rankin, CEAP, Jalaie, grado ESVS de trauma y SVP muestran
+  una explicación breve junto a cada opción («IIIb · …»); se guarda solo el valor.
+- **Escalas compuestas calculadas.** Se rellenan los componentes y el sistema asigna el resultado:
+  estadio clínico **WIfI** (W + I + fI), estadio **GLASS** (femoropoplíteo + infrapoplíteo),
+  **Villalta** (11 elementos + úlcera → puntos y gravedad), **VCSS** (10 elementos → puntos) y el
+  código **SVP** de los trastornos venosos pélvicos. Los textos y tablas están en
+  [`registro/escalas.py`](registro/escalas.py).
 - **Exitus hospitalario** con fecha y causa: cuenta en la mortalidad a 30 días y cierra los
   seguimientos pendientes del paciente (sin más recordatorios). Lo mismo ocurre si en un
   seguimiento consta que el paciente ha fallecido.
