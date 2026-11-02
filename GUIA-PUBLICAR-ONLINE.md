@@ -91,10 +91,14 @@ Puedes saltarte este paso y configurar el correo más adelante.
    ssh root@IP_DEL_SERVIDOR
    ```
    La primera vez te pregunta si confías en el servidor: escribe `yes`.
-2. Descarga el programa y lanza el instalador:
+2. Descarga el programa y lanza el instalador. El repositorio es **privado**, así que GitHub
+   te pedirá usuario y contraseña: el usuario es `davidgarmd` y la contraseña es un *token* de
+   solo lectura (no tu contraseña de GitHub). Para crearlo: GitHub → *Settings → Developer
+   settings → Personal access tokens → Fine-grained tokens → Generate new token*, con acceso
+   solo al repositorio `registro-vascular`, permiso *Contents: Read-only* y caducidad de 90 días.
    ```
-   git clone -b claude/surgical-data-collection-system-on57lv https://github.com/davidgarmd/Claude.git
-   cd Claude/registro-vascular
+   git clone https://github.com/davidgarmd/registro-vascular.git
+   cd registro-vascular
    bash instalar-servidor.sh
    ```
 3. El instalador te preguntará:
@@ -120,7 +124,7 @@ lo está pidiendo a Let's Encrypt.
 ## Uso diario y mantenimiento
 
 Para cualquiera de estas tareas, conéctate primero con `ssh root@IP_DEL_SERVIDOR` y
-entra en la carpeta con `cd Claude/registro-vascular`.
+entra en la carpeta con `cd registro-vascular`.
 
 | Quiero… | Comando |
 |---|---|
@@ -140,7 +144,7 @@ Hay tres niveles de copia:
 3. **Fuera del servidor**: descárgala tú de vez en cuando, por ejemplo una vez al mes. Desde tu
    ordenador, sin conectarte por SSH:
    ```
-   scp -r root@IP_DEL_SERVIDOR:Claude/registro-vascular/copias ./copias-registro
+   scp -r root@IP_DEL_SERVIDOR:registro-vascular/copias ./copias-registro
    ```
    Guárdala en un disco o carpeta cifrados. Cada copia incluye la base de datos **y** el fichero
    `config-*.py` con las claves: sin ese fichero, los NHC no se pueden descifrar.
@@ -195,7 +199,7 @@ prefiere que los datos no salgan de su red, esta misma instalación funciona sin
 servidor Ubuntu del hospital: Informática solo tiene que seguir el paso 4 y darle un nombre
 interno.
 
-**Nota sobre el repositorio:** el código está en un repositorio **público** de GitHub. Es
-correcto porque solo contiene el programa, nunca datos ni claves. Si prefieres que sea
-privado, cámbialo en *Settings → General → Danger zone → Change visibility*. En ese caso,
-para el `git clone` del paso 4 necesitarás un *token* de acceso de GitHub.
+**Nota sobre el repositorio:** el código está en un repositorio **privado** de GitHub,
+`davidgarmd/registro-vascular`, que solo contiene el programa, nunca datos ni claves. Para
+descargarlo en el servidor (paso 4) hace falta el *token* de solo lectura; para instalar una
+versión nueva con `git pull` también.
